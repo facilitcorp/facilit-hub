@@ -99,6 +99,9 @@ agentes — misturaria login com atribuição e abriria credencial sem dono.
 
 ## D-008 — IA desacoplada da interface e do fornecedor
 
+> **ADIADA (D-010).** Planejamento mantido; nada disso é implementado no MVP.
+> O rascunho de contrato das análises está no commit `ca8c7be` (v0.4.0).
+
 Aprovada pelo Paulo em 07/10/2026.
 
 - **Nenhuma requisição HTTP espera resposta de modelo.** O front pede
@@ -133,6 +136,9 @@ e da disponibilidade do fornecedor.
 
 ## D-009 — Eventos no Postgres, sem broker
 
+> **No MVP (D-010):** a tabela `eventos` e o histórico entram; `agent.heartbeat`,
+> fila de IA e `LISTEN/NOTIFY` ficam para depois.
+
 Aprovada pelo Paulo em 07/10/2026.
 
 - Tabela `eventos`, **somente inserção**: `id`, `organizacao_id`, `tipo`,
@@ -154,3 +160,27 @@ Aprovada pelo Paulo em 07/10/2026.
 **Descartado (nesta fase):** Kafka e RabbitMQ — mais um componente para
 operar sem volume que justifique; o outbox no Postgres permite migrar depois
 sem mudar quem publica.
+
+## D-010 — MVP operacional primeiro
+
+Decidida pelo Paulo em 07/10/2026. Objetivo: gestores usando o Hub o quanto
+antes, organizando empresas → projetos → demandas → responsáveis → prazos →
+andamento → decisões → histórico.
+
+**Prioridade 1 — fundação:** autenticação, sessão, usuários, permissões
+básicas, Organization Facilitcorp, atores/responsáveis, empresas, projetos,
+banco, migrations, API, OpenAPI, front-end e layout principal.
+
+**Prioridade 2 — empresas:** ambiente de cada empresa com nome, logo,
+capa, descrição, status, site, Instagram, Facebook, LinkedIn, YouTube,
+WhatsApp <!-- PENDENTE: resto da lista do Paulo -->.
+
+**NÃO implementar agora** (decisões ficam documentadas): Facilit AI,
+integração com Claude/OpenAI, geração automática de análises, Project Pulse e
+Health Score inteligentes, previsão de atrasos, `agent.heartbeat`, integração
+automática com GitHub, leitura de commits/deploys, alertas preditivos,
+automações avançadas e orquestração de agentes.
+
+Consequências no contrato (v0.5.0): rotas e schemas de análise removidos;
+`agent.heartbeat` fora do `TipoEvento`. A `saude` do projeto continua, mas é
+**manual** (o gestor marca), não calculada.

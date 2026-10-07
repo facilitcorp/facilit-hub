@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Facilit Hub API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Contrato oficial entre front-end e back-end do Facilit Hub.
 
@@ -25,8 +25,9 @@ info:
       (nem em query, nem em corpo): sai da sessão.
     - Responsáveis são **atores** (D-007): pessoa, agente de IA ou automação.
       Atribuições apontam para `atorId`, nunca para `usuarioId`.
-    - Timeline = eventos (D-009). Análises de IA são assíncronas e persistidas
-      (D-008): nenhuma rota espera resposta de modelo.
+    - Histórico (timeline) = eventos (D-009).
+    - Escopo MVP (D-010): IA e análises ficaram para fase posterior e NÃO
+      estão neste contrato.
 servers:
   - url: /api
 security:
@@ -43,8 +44,6 @@ tags:
     description: Projetos de cada empresa
   - name: eventos
     description: Timeline — eventos de domínio (somente leitura)
-  - name: analises
-    description: Resumos e análises de IA, gerados em segundo plano
 
 paths:
   /sessao:
@@ -172,6 +171,59 @@ paths:
         '403': { $ref: '#/components/responses/SemPermissao' }
         '404': { $ref: '#/components/responses/NaoEncontrado' }
         '409': { $ref: '#/components/responses/Conflito' }
+
+  /empresas/{empresaId}/{imagem}:
+    parameters:
+      - $ref: '#/components/parameters/EmpresaId'
+      - name: imagem
+        in: path
+        required: true
+        schema: { type: string, enum: [logo, capa] }
+    put:
+      tags: [empresas]
+      operationId: enviarImagemEmpresa
+      summary: Envia (ou troca) o logo ou a capa da empresa
+      description: |
+        PNG, JPEG ou WebP (SVG não: pode carregar script). Logo até 2 MB,
+        capa até 5 MB. Arquivo privado; a leitura é por URL assinada
+        (`logoUrl`/`capaUrl`), que expira — não guardar em cache longo.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [arquivo]
+              properties:
+                arquivo: { type: string, format: binary }
+      responses:
+        '200':
+          description: Empresa com a nova URL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Empresa' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '413':
+          description: Arquivo maior que o limite
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problema' }
+    delete:
+      tags: [empresas]
+      operationId: removerImagemEmpresa
+      summary: Remove o logo ou a capa
+      responses:
+        '200':
+          description: Empresa sem a imagem
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Empresa' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
 
   /atores:
     get:
@@ -306,8 +358,6 @@ paths:
       tags: [eventos]
       operationId: listarEventos
       summary: Timeline, do mais recente para o mais antigo (ou ao vivo com `depoisDe`)
-      description: |
-        `agent.heartbeat` fica de fora, a menos que seja pedido em `tipo`.
       parameters:
         - $ref: '#/components/parameters/Limite'
         - $ref: '#/components/parameters/Cursor'
@@ -349,94 +399,6 @@ paths:
                   proximoCursor: { type: [string, 'null'] }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-
-  /analises:
-    get:
-      tags: [analises]
-      operationId: listarAnalises
-      summary: Análises de IA de um alvo, da mais recente para a mais antiga
-      parameters:
-        - $ref: '#/components/parameters/Limite'
-        - $ref: '#/components/parameters/Cursor'
-        - name: alvoTipo
-          in: query
-          required: true
-          schema: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
-        - name: alvoId
-          in: query
-          required: true
-          schema: { type: string, format: uuid }
-        - name: tipo
-          in: query
-          schema: { $ref: '#/components/schemas/TipoAnalise' }
-      responses:
-        '200':
-          description: Página de análises (vazia se ainda não há nenhuma)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [itens, proximoCursor, solicitacaoPendente]
-                properties:
-                  itens:
-                    type: array
-                    items: { $ref: '#/components/schemas/Analise' }
-                  proximoCursor: { type: [string, 'null'] }
-                  solicitacaoPendente:
-                    description: Solicitação na fila ou gerando para este alvo/tipo (quem abre a tela depois também vê)
-                    oneOf:
-                      - $ref: '#/components/schemas/SolicitacaoAnaliseEstado'
-                      - type: 'null'
-        '400': { $ref: '#/components/responses/Invalido' }
-        '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '403': { $ref: '#/components/responses/SemPermissao' }
-    post:
-      tags: [analises]
-      operationId: solicitarAnalise
-      summary: Pede uma nova análise; responde na hora, sem esperar o modelo
-      description: |
-        Idempotente por alvo + tipo: se já há solicitação `na_fila` ou
-        `gerando` para o mesmo `alvoTipo`/`alvoId`/`tipo`, devolve ESSA (mesmo
-        `id`) em vez de enfileirar outra.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SolicitacaoAnalise' }
-      responses:
-        '202':
-          description: Aceita (nova ou a pendente que já existia)
-          headers:
-            Location:
-              description: '`/api/analises/solicitacoes/{id}`'
-              schema: { type: string }
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SolicitacaoAnaliseEstado' }
-        '400': { $ref: '#/components/responses/Invalido' }
-        '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '403': { $ref: '#/components/responses/SemPermissao' }
-        '429': { $ref: '#/components/responses/MuitasTentativas' }
-
-  /analises/solicitacoes/{solicitacaoId}:
-    parameters:
-      - name: solicitacaoId
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
-    get:
-      tags: [analises]
-      operationId: obterSolicitacaoAnalise
-      summary: Estado de uma solicitação (polling curto enquanto pendente)
-      responses:
-        '200':
-          description: Estado atual
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SolicitacaoAnaliseEstado' }
-        '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
 
 components:
   securitySchemes:
@@ -565,8 +527,6 @@ components:
         - projetos.editar
         - atores.ler
         - eventos.ler
-        - analises.ler
-        - analises.solicitar
 
     Organizacao:
       type: object
@@ -608,7 +568,7 @@ components:
     Empresa:
       type: object
       description: Empresa da organização. NÃO é tenant (D-006).
-      required: [id, organizacaoId, nome, empresaMaeId, criadaEm, atualizadaEm, versao]
+      required: [id, organizacaoId, nome, descricao, status, logoUrl, capaUrl, links, empresaMaeId, criadaEm, atualizadaEm, versao]
       properties:
         id: { type: string, format: uuid }
         organizacaoId:
@@ -616,6 +576,17 @@ components:
           format: uuid
           description: Somente leitura; vem da sessão
         nome: { type: string }
+        descricao: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/StatusEmpresa' }
+        logoUrl:
+          type: [string, 'null']
+          format: uri
+          description: URL assinada e temporária
+        capaUrl:
+          type: [string, 'null']
+          format: uri
+          description: URL assinada e temporária
+        links: { $ref: '#/components/schemas/LinksEmpresa' }
         empresaMaeId:
           type: [string, 'null']
           format: uuid
@@ -632,6 +603,9 @@ components:
       additionalProperties: false
       properties:
         nome: { type: string, minLength: 2, maxLength: 160 }
+        descricao: { type: [string, 'null'], maxLength: 4000 }
+        status: { $ref: '#/components/schemas/StatusEmpresa' }
+        links: { $ref: '#/components/schemas/LinksEmpresa' }
         empresaMaeId: { type: [string, 'null'], format: uuid }
 
     EmpresaAtualizacao:
@@ -641,6 +615,31 @@ components:
       properties:
         versao: { type: integer }
         nome: { type: string, minLength: 2, maxLength: 160 }
+        descricao: { type: [string, 'null'], maxLength: 4000 }
+        status: { $ref: '#/components/schemas/StatusEmpresa' }
+        links:
+          allOf: [{ $ref: '#/components/schemas/LinksEmpresa' }]
+          description: Parcial — só os campos enviados mudam; null apaga
+
+    StatusEmpresa:
+      type: string
+      description: 'PROPOSTA — aguardando confirmação do Paulo'
+      enum: [ativa, em_implantacao, pausada, inativa]
+      default: ativa
+
+    LinksEmpresa:
+      type: object
+      additionalProperties: false
+      properties:
+        site: { type: [string, 'null'], format: uri, maxLength: 500 }
+        instagram: { type: [string, 'null'], format: uri, maxLength: 500 }
+        facebook: { type: [string, 'null'], format: uri, maxLength: 500 }
+        linkedin: { type: [string, 'null'], format: uri, maxLength: 500 }
+        youtube: { type: [string, 'null'], format: uri, maxLength: 500 }
+        whatsapp:
+          type: [string, 'null']
+          pattern: '^\+[1-9][0-9]{7,14}$'
+          description: Número em E.164 (ex. +5511999999999); o front monta o link
 
     Saude:
       type: string
@@ -719,7 +718,6 @@ components:
         - project.blocked
         - project.unblocked
         - document.added
-        - agent.heartbeat
 
     Evento:
       type: object
@@ -739,7 +737,7 @@ components:
           type: object
           required: [tipo, id]
           properties:
-            tipo: { type: string, enum: [empresa, projeto, demanda, tarefa, decisao, documento, ator] }
+            tipo: { type: string, enum: [empresa, projeto, demanda, tarefa, decisao, documento] }
             id: { type: string, format: uuid }
             titulo:
               type: [string, 'null']
@@ -748,85 +746,3 @@ components:
           type: object
           description: Detalhe específico do tipo (ex. campos alterados em `project.updated`)
           additionalProperties: true
-
-    AlvoAnaliseTipo:
-      type: string
-      enum: [organizacao, empresa, projeto]
-
-    TipoAnalise:
-      type: string
-      enum: [resumo, riscos, atencao]
-
-    SolicitacaoAnaliseEstado:
-      type: object
-      description: |
-        Polling: consultar a cada 5 s enquanto `na_fila`/`gerando`; parar em
-        `pronta` (ler `analiseId`) ou `falhou`.
-      required: [id, alvoTipo, alvoId, tipo, estado, analiseId, codigoFalha, criadaEm, atualizadaEm]
-      properties:
-        id: { type: string, format: uuid }
-        alvoTipo: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
-        alvoId: { type: string, format: uuid }
-        tipo: { $ref: '#/components/schemas/TipoAnalise' }
-        estado: { type: string, enum: [na_fila, gerando, pronta, falhou] }
-        analiseId:
-          type: [string, 'null']
-          format: uuid
-          description: Preenchido em `pronta`
-        codigoFalha:
-          type: [string, 'null']
-          description: Só em `falhou` (ex. `provedor_indisponivel`, `sem_dados`)
-        criadaEm: { type: string, format: date-time }
-        atualizadaEm: { type: string, format: date-time }
-
-    SolicitacaoAnalise:
-      type: object
-      required: [alvoTipo, alvoId, tipo]
-      additionalProperties: false
-      properties:
-        alvoTipo: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
-        alvoId: { type: string, format: uuid }
-        tipo: { $ref: '#/components/schemas/TipoAnalise' }
-
-    Analise:
-      type: object
-      required: [id, alvoTipo, alvoId, tipo, conteudo, geradaEm, baseadaAte, desatualizada, fontes, provedor, modelo, confianca]
-      properties:
-        id: { type: string, format: uuid }
-        alvoTipo: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
-        alvoId: { type: string, format: uuid }
-        tipo: { $ref: '#/components/schemas/TipoAnalise' }
-        conteudo:
-          type: string
-          description: Texto em Markdown (o front sanitiza antes de exibir)
-        geradaEm: { type: string, format: date-time }
-        baseadaAte:
-          type: string
-          format: date-time
-          description: Instante do último evento considerado
-        desatualizada:
-          type: boolean
-          description: Houve eventos do alvo depois de `baseadaAte`
-        fontes:
-          type: array
-          description: O que a análise usou (para o usuário conferir)
-          items:
-            type: object
-            required: [tipo, id]
-            properties:
-              tipo: { type: string, enum: [evento, projeto, demanda, decisao, documento] }
-              id: { type: string, format: uuid }
-              titulo: { type: [string, 'null'] }
-        provedor:
-          type: string
-          description: Texto livre, sem enum de fornecedor (D-008)
-        modelo: { type: string }
-        confianca:
-          type: [string, 'null']
-          enum: [baixa, media, alta, null]
-          description: null quando não se aplica
-        autor:
-          description: Agente de IA que gerou, se for um ator cadastrado
-          oneOf:
-            - $ref: '#/components/schemas/AtorResumo'
-            - type: 'null'
