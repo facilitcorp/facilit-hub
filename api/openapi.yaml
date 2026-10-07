@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Facilit Hub API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Contrato oficial entre front-end e back-end do Facilit Hub.
 
@@ -103,6 +103,13 @@ paths:
           in: query
           description: Filtro por nome (contém, sem diferenciar acento/caixa)
           schema: { type: string, maxLength: 120 }
+        - name: status
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/StatusEmpresa' }
       responses:
         '200':
           description: Página de empresas
@@ -272,17 +279,27 @@ paths:
         - name: empresaId
           in: query
           schema: { type: string, format: uuid }
-        - name: saude
+        - name: status
           in: query
-          schema: { $ref: '#/components/schemas/Saude' }
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/StatusProjeto' }
         - name: fase
           in: query
           schema: { $ref: '#/components/schemas/Fase' }
+        - name: prioridade
+          in: query
+          schema: { $ref: '#/components/schemas/Prioridade' }
+        - name: responsavelId
+          in: query
+          schema: { type: string, format: uuid }
         - name: ordem
           in: query
           schema:
             type: string
-            enum: [nome, -nome, prazoPrevisto, -prazoPrevisto, atualizadoEm, -atualizadoEm]
+            enum: [nome, -nome, prazoPrevisto, -prazoPrevisto, prioridade, -prioridade, atualizadoEm, -atualizadoEm]
             default: -atualizadoEm
       responses:
         '200':
@@ -565,10 +582,17 @@ components:
               type: [string, 'null']
               description: Ex. o que o agente ou a automação faz
 
+    Telefone:
+      type: string
+      pattern: '^\+[1-9][0-9]{7,14}$'
+      description: E.164 (ex. +5511999999999)
+
     Empresa:
       type: object
-      description: Empresa da organização. NÃO é tenant (D-006).
-      required: [id, organizacaoId, nome, descricao, status, logoUrl, capaUrl, links, empresaMaeId, criadaEm, atualizadaEm, versao]
+      description: |
+        Empresa da organização. NÃO é tenant (D-006). Os projetos vinculados
+        vêm de `listarProjetos?empresaId=`; aqui só os totais.
+      required: [id, organizacaoId, nome, descricao, status, logoUrl, capaUrl, links, contatos, endereco, observacoes, responsaveis, totalProjetos, totalProjetosEmAndamento, empresaMaeId, criadaEm, atualizadaEm, versao]
       properties:
         id: { type: string, format: uuid }
         organizacaoId:
@@ -587,6 +611,21 @@ components:
           format: uri
           description: URL assinada e temporária
         links: { $ref: '#/components/schemas/LinksEmpresa' }
+        contatos:
+          type: array
+          items: { $ref: '#/components/schemas/ContatoEmpresa' }
+        endereco:
+          oneOf:
+            - $ref: '#/components/schemas/Endereco'
+            - type: 'null'
+        observacoes:
+          type: [string, 'null']
+          description: Notas internas da gestão
+        responsaveis:
+          type: array
+          items: { $ref: '#/components/schemas/ResponsavelEmpresa' }
+        totalProjetos: { type: integer, minimum: 0 }
+        totalProjetosEmAndamento: { type: integer, minimum: 0 }
         empresaMaeId:
           type: [string, 'null']
           format: uuid
@@ -597,6 +636,52 @@ components:
           type: integer
           description: Controle de concorrência otimista; enviar no PATCH
 
+    ContatoEmpresa:
+      type: object
+      description: Pessoa de contato da empresa (não é ator, não faz login)
+      required: [nome]
+      additionalProperties: false
+      properties:
+        nome: { type: string, minLength: 2, maxLength: 160 }
+        cargo: { type: [string, 'null'], maxLength: 120 }
+        email: { type: [string, 'null'], format: email, maxLength: 254 }
+        telefone:
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+        observacao: { type: [string, 'null'], maxLength: 500 }
+
+    Endereco:
+      type: object
+      additionalProperties: false
+      properties:
+        logradouro: { type: [string, 'null'], maxLength: 200 }
+        numero: { type: [string, 'null'], maxLength: 20 }
+        complemento: { type: [string, 'null'], maxLength: 120 }
+        bairro: { type: [string, 'null'], maxLength: 120 }
+        cidade: { type: [string, 'null'], maxLength: 120 }
+        uf: { type: [string, 'null'], pattern: '^[A-Z]{2}$' }
+        cep: { type: [string, 'null'], pattern: '^[0-9]{8}$', description: Só dígitos }
+        pais: { type: string, default: BR, pattern: '^[A-Z]{2}$' }
+
+    ResponsavelEmpresa:
+      type: object
+      required: [ator, papel]
+      properties:
+        ator: { $ref: '#/components/schemas/AtorResumo' }
+        papel:
+          type: [string, 'null']
+          maxLength: 80
+          description: Texto livre, ex. "Diretor", "Gestor de operações"
+
+    ResponsavelEmpresaEntrada:
+      type: object
+      required: [atorId]
+      additionalProperties: false
+      properties:
+        atorId: { type: string, format: uuid, description: Ator ativo }
+        papel: { type: [string, 'null'], maxLength: 80 }
+
     EmpresaEntrada:
       type: object
       required: [nome]
@@ -606,10 +691,27 @@ components:
         descricao: { type: [string, 'null'], maxLength: 4000 }
         status: { $ref: '#/components/schemas/StatusEmpresa' }
         links: { $ref: '#/components/schemas/LinksEmpresa' }
+        contatos:
+          type: array
+          maxItems: 30
+          items: { $ref: '#/components/schemas/ContatoEmpresa' }
+        endereco:
+          oneOf:
+            - $ref: '#/components/schemas/Endereco'
+            - type: 'null'
+        observacoes: { type: [string, 'null'], maxLength: 8000 }
+        responsaveis:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ResponsavelEmpresaEntrada' }
         empresaMaeId: { type: [string, 'null'], format: uuid }
 
     EmpresaAtualizacao:
       type: object
+      description: |
+        `links` e `endereco` são parciais (só os campos enviados mudam; null
+        apaga). `contatos` e `responsaveis`, quando enviados, SUBSTITUEM a
+        lista inteira.
       required: [versao]
       additionalProperties: false
       properties:
@@ -617,15 +719,29 @@ components:
         nome: { type: string, minLength: 2, maxLength: 160 }
         descricao: { type: [string, 'null'], maxLength: 4000 }
         status: { $ref: '#/components/schemas/StatusEmpresa' }
-        links:
-          allOf: [{ $ref: '#/components/schemas/LinksEmpresa' }]
-          description: Parcial — só os campos enviados mudam; null apaga
+        links: { $ref: '#/components/schemas/LinksEmpresa' }
+        contatos:
+          type: array
+          maxItems: 30
+          items: { $ref: '#/components/schemas/ContatoEmpresa' }
+        endereco:
+          oneOf:
+            - $ref: '#/components/schemas/Endereco'
+            - type: 'null'
+        observacoes: { type: [string, 'null'], maxLength: 8000 }
+        responsaveis:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ResponsavelEmpresaEntrada' }
 
     StatusEmpresa:
       type: string
-      description: 'PROPOSTA — aguardando confirmação do Paulo'
-      enum: [ativa, em_implantacao, pausada, inativa]
-      default: ativa
+      description: |
+        Decidido pelo Paulo em 07/10/2026 (D-011).
+        em_estruturacao = sendo preparada; ativa = operação normal;
+        pausada = suspensa temporariamente; inativa = encerrada/sem operação.
+      enum: [em_estruturacao, ativa, pausada, inativa]
+      default: em_estruturacao
 
     LinksEmpresa:
       type: object
@@ -637,28 +753,56 @@ components:
         linkedin: { type: [string, 'null'], format: uri, maxLength: 500 }
         youtube: { type: [string, 'null'], format: uri, maxLength: 500 }
         whatsapp:
-          type: [string, 'null']
-          pattern: '^\+[1-9][0-9]{7,14}$'
-          description: Número em E.164 (ex. +5511999999999); o front monta o link
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+          description: O front monta o link wa.me
 
-    Saude:
+    StatusProjeto:
       type: string
-      enum: [verde, amarelo, vermelho]
+      description: PROPOSTA — aguardando confirmação do Paulo
+      enum: [nao_iniciado, em_andamento, bloqueado, pausado, concluido, cancelado]
+      default: nao_iniciado
 
     Fase:
       type: string
-      enum: [planejamento, execucao, pausado, concluido, cancelado]
+      description: PROPOSTA — aguardando confirmação do Paulo
+      enum: [descoberta, planejamento, execucao, validacao, entrega]
+      default: descoberta
+
+    Prioridade:
+      type: string
+      enum: [baixa, media, alta, critica]
+      default: media
+
+    NotaAndamento:
+      type: object
+      description: Última atualização escrita pelo gestor ("onde estamos")
+      required: [texto, em, autor]
+      properties:
+        texto: { type: string }
+        em: { type: string, format: date-time }
+        autor:
+          oneOf:
+            - $ref: '#/components/schemas/AtorResumo'
+            - type: 'null'
 
     Projeto:
       type: object
-      required: [id, empresaId, nome, fase, saude, responsavel, inicioPrevisto, prazoPrevisto, concluidoEm, criadoEm, atualizadoEm, versao]
+      required: [id, empresaId, nome, descricao, status, fase, prioridade, progresso, responsavel, inicioPrevisto, prazoPrevisto, concluidoEm, ultimaAtualizacao, proximosPassos, criadoEm, atualizadoEm, versao]
       properties:
         id: { type: string, format: uuid }
         empresaId: { type: string, format: uuid }
         nome: { type: string }
         descricao: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/StatusProjeto' }
         fase: { $ref: '#/components/schemas/Fase' }
-        saude: { $ref: '#/components/schemas/Saude' }
+        prioridade: { $ref: '#/components/schemas/Prioridade' }
+        progresso:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Percentual informado pelo gestor (manual no MVP)
         responsavel:
           description: Ator responsável (pessoa, agente ou automação); null se ninguém
           oneOf:
@@ -667,8 +811,16 @@ components:
         inicioPrevisto: { type: [string, 'null'], format: date }
         prazoPrevisto: { type: [string, 'null'], format: date }
         concluidoEm: { type: [string, 'null'], format: date-time }
+        ultimaAtualizacao:
+          oneOf:
+            - $ref: '#/components/schemas/NotaAndamento'
+            - type: 'null'
+        proximosPassos: { type: [string, 'null'] }
         criadoEm: { type: string, format: date-time }
-        atualizadoEm: { type: string, format: date-time }
+        atualizadoEm:
+          type: string
+          format: date-time
+          description: Última alteração de qualquer campo (diferente de `ultimaAtualizacao`)
         versao: { type: integer }
 
     ProjetoEntrada:
@@ -679,12 +831,17 @@ components:
         empresaId: { type: string, format: uuid }
         nome: { type: string, minLength: 2, maxLength: 160 }
         descricao: { type: [string, 'null'], maxLength: 4000 }
+        status: { $ref: '#/components/schemas/StatusProjeto' }
+        fase: { $ref: '#/components/schemas/Fase' }
+        prioridade: { $ref: '#/components/schemas/Prioridade' }
+        progresso: { type: integer, minimum: 0, maximum: 100, default: 0 }
         responsavelId:
           type: [string, 'null']
           format: uuid
           description: '`id` de um ator ativo (ver `listarAtores`)'
         inicioPrevisto: { type: [string, 'null'], format: date }
         prazoPrevisto: { type: [string, 'null'], format: date }
+        proximosPassos: { type: [string, 'null'], maxLength: 4000 }
 
     ProjetoAtualizacao:
       type: object
@@ -694,14 +851,22 @@ components:
         versao: { type: integer }
         nome: { type: string, minLength: 2, maxLength: 160 }
         descricao: { type: [string, 'null'], maxLength: 4000 }
+        status: { $ref: '#/components/schemas/StatusProjeto' }
         fase: { $ref: '#/components/schemas/Fase' }
-        saude: { $ref: '#/components/schemas/Saude' }
+        prioridade: { $ref: '#/components/schemas/Prioridade' }
+        progresso: { type: integer, minimum: 0, maximum: 100 }
         responsavelId:
           type: [string, 'null']
           format: uuid
           description: '`id` de um ator ativo (ver `listarAtores`)'
         inicioPrevisto: { type: [string, 'null'], format: date }
         prazoPrevisto: { type: [string, 'null'], format: date }
+        proximosPassos: { type: [string, 'null'], maxLength: 4000 }
+        notaAndamento:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Se enviada, vira a nova `ultimaAtualizacao` (autor = sessão) e entra no histórico
 
     TipoEvento:
       type: string

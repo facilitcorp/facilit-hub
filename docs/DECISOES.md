@@ -173,7 +173,8 @@ banco, migrations, API, OpenAPI, front-end e layout principal.
 
 **Prioridade 2 — empresas:** ambiente de cada empresa com nome, logo,
 capa, descrição, status, site, Instagram, Facebook, LinkedIn, YouTube,
-WhatsApp <!-- PENDENTE: resto da lista do Paulo -->.
+WhatsApp, contatos, endereço, observações, responsáveis e projetos
+vinculados (D-011).
 
 **NÃO implementar agora** (decisões ficam documentadas): Facilit AI,
 integração com Claude/OpenAI, geração automática de análises, Project Pulse e
@@ -182,5 +183,32 @@ automática com GitHub, leitura de commits/deploys, alertas preditivos,
 automações avançadas e orquestração de agentes.
 
 Consequências no contrato (v0.5.0): rotas e schemas de análise removidos;
-`agent.heartbeat` fora do `TipoEvento`. A `saude` do projeto continua, mas é
-**manual** (o gestor marca), não calculada.
+`agent.heartbeat` fora do `TipoEvento`. Nada de projeto é calculado
+automaticamente: status, progresso e andamento são informados pelo gestor.
+
+## D-011 — Empresa e projeto no MVP
+
+Decidida pelo Paulo em 07/10/2026.
+
+**Status da empresa:** `em_estruturacao` (sendo preparada), `ativa`
+(operação normal), `pausada` (suspensa temporariamente), `inativa`
+(encerrada/sem operação). Padrão ao criar: `em_estruturacao`.
+**Descartado:** `em_implantacao`.
+
+**Página da empresa** responde, de relance: o que é, qual a situação, quem
+são os responsáveis, quais os canais e quais projetos estão vinculados.
+Campos: nome, logo, capa, descrição, status, site, Instagram, Facebook,
+LinkedIn, YouTube, WhatsApp, contatos, endereço, observações, responsáveis
+(atores, com papel) e projetos vinculados (via `listarProjetos?empresaId=`,
+com totais na própria empresa).
+
+- Contato da empresa **não é ator**: é pessoa externa, sem login e sem
+  atribuição.
+- Logo e capa: envio pela API (PNG/JPEG/WebP, sem SVG; 2 MB / 5 MB), leitura
+  por URL assinada.
+
+**Projeto (P3):** nome, empresa, descrição, status, fase, responsável,
+prioridade, progresso (0–100, manual), início, prazo, última atualização
+(nota de andamento escrita pelo gestor, com autor e data) e próximos passos.
+A antiga `saude` sai: o status `bloqueado` cobre o caso.
+<!-- PENDENTE: confirmação do Paulo sobre os valores de status e fase do projeto. -->
