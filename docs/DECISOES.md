@@ -211,4 +211,9 @@ com totais na própria empresa).
 prioridade, progresso (0–100, manual), início, prazo, última atualização
 (nota de andamento escrita pelo gestor, com autor e data) e próximos passos.
 A antiga `saude` sai: o status `bloqueado` cobre o caso.
-<!-- PENDENTE: confirmação do Paulo sobre os valores de status e fase do projeto. -->
+
+**Status do projeto** (como está): `nao_iniciado` (padrão), `em_andamento`,
+`bloqueado`, `pausado`, `concluido`, `cancelado`.
+**Fase do projeto** (em que etapa): `descoberta` (padrão), `planejamento`,
+`execucao`, `validacao`, `entrega`.
+Aprovados pelo Paulo em 07/10/2026.

@@ -760,13 +760,13 @@ components:
 
     StatusProjeto:
       type: string
-      description: PROPOSTA — aguardando confirmação do Paulo
+      description: Aprovado pelo Paulo em 07/10/2026 (D-011)
       enum: [nao_iniciado, em_andamento, bloqueado, pausado, concluido, cancelado]
       default: nao_iniciado
 
     Fase:
       type: string
-      description: PROPOSTA — aguardando confirmação do Paulo
+      description: Aprovado pelo Paulo em 07/10/2026 (D-011)
       enum: [descoberta, planejamento, execucao, validacao, entrega]
       default: descoberta
 
