@@ -1,0 +1,26 @@
+# Dependências e build
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Ambiente — NUNCA versionar valores reais (só o .env.example)
+.env
+.env.*
+!.env.example
+
+# Credenciais
+*.pem
+*.key
+*.p12
+*-sa.json
+service-account*.json
+credentials*.json
+
+# Sistema / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log

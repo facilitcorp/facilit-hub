@@ -1,0 +1,35 @@
+name: seguranca
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: varredura de segredos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  vite-sem-segredo:
+    name: nenhum segredo em VITE_*
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: procurar VITE_ com nome de segredo
+        run: |
+          if grep -rInE 'VITE_[A-Z0-9_]*(KEY|SECRET|TOKEN|PASSWORD|SENHA|PRIVATE)' \
+               --exclude-dir=node_modules --exclude-dir=.git \
+               --exclude=CONTRIBUTING.md --exclude=seguranca.yml . ; then
+            echo "::error::Variável VITE_ com nome de segredo. VITE_* vai para o navegador."
+            exit 1
+          fi

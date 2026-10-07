@@ -1,0 +1,832 @@
+openapi: 3.1.0
+info:
+  title: Facilit Hub API
+  version: 0.4.0
+  description: |
+    Contrato oficial entre front-end e back-end do Facilit Hub.
+
+    Convenções (valem para todas as rotas):
+    - Sessão em cookie `__Host-hub_sessao` (HttpOnly, Secure, `SameSite=Strict`,
+      `Path=/`). Front e API no MESMO domínio: o front chama `/api` relativo,
+      sem CORS. Requisições que alteram dados (POST/PATCH/DELETE) têm o
+      cabeçalho `Origin` conferido pela API; origem diferente = 403.
+    - IDs são strings (UUID). Datas em ISO 8601 com fuso (`date-time`).
+    - Erros sempre em `application/problem+json` (schema `Problema`), com
+      `codigo` estável e, em validação, erros por campo.
+    - **401** = sem sessão ou sessão expirada (o front leva ao login).
+      **403** = sessão válida, mas sem permissão.
+    - Listas paginam por cursor: `limite` + `cursor`; resposta traz
+      `proximoCursor` (null no fim). Ordenação por `ordem` (`campo` ou `-campo`).
+    - Toda operação tem `operationId`: o nome do hook gerado no front sai dele.
+    - A autorização real é do back-end; `permissoes` em `GET /sessao` só
+      orienta o front a esconder ações.
+    - Organização (D-006): toda sessão pertence a UMA organização, e todo dado
+      é filtrado por ela no back-end. O `organizacaoId` NUNCA vem do front
+      (nem em query, nem em corpo): sai da sessão.
+    - Responsáveis são **atores** (D-007): pessoa, agente de IA ou automação.
+      Atribuições apontam para `atorId`, nunca para `usuarioId`.
+    - Timeline = eventos (D-009). Análises de IA são assíncronas e persistidas
+      (D-008): nenhuma rota espera resposta de modelo.
+servers:
+  - url: /api
+security:
+  - sessao: []
+
+tags:
+  - name: sessao
+    description: Login, logout e sessão atual
+  - name: empresas
+    description: Empresas da organização (Telensat, Rastremix, Mobiliza...)
+  - name: atores
+    description: Quem pode ser responsável — pessoas, agentes de IA e automações
+  - name: projetos
+    description: Projetos de cada empresa
+  - name: eventos
+    description: Timeline — eventos de domínio (somente leitura)
+  - name: analises
+    description: Resumos e análises de IA, gerados em segundo plano
+
+paths:
+  /sessao:
+    get:
+      tags: [sessao]
+      operationId: obterSessao
+      summary: Usuário da sessão atual e suas permissões
+      responses:
+        '200':
+          description: Sessão ativa
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sessao' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+    post:
+      tags: [sessao]
+      operationId: entrar
+      summary: Abre sessão (login). Define o cookie de sessão.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credenciais' }
+      responses:
+        '200':
+          description: Sessão aberta
+          headers:
+            Set-Cookie:
+              description: Cookie de sessão HttpOnly
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sessao' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '429': { $ref: '#/components/responses/MuitasTentativas' }
+    delete:
+      tags: [sessao]
+      operationId: sair
+      summary: Encerra a sessão (logout). Idempotente.
+      responses:
+        '204': { description: Sessão encerrada }
+
+  /empresas:
+    get:
+      tags: [empresas]
+      operationId: listarEmpresas
+      summary: Lista empresas visíveis à sessão
+      parameters:
+        - $ref: '#/components/parameters/Limite'
+        - $ref: '#/components/parameters/Cursor'
+        - name: ordem
+          in: query
+          schema: { type: string, enum: [nome, -nome, criadaEm, -criadaEm], default: nome }
+        - name: busca
+          in: query
+          description: Filtro por nome (contém, sem diferenciar acento/caixa)
+          schema: { type: string, maxLength: 120 }
+      responses:
+        '200':
+          description: Página de empresas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens, proximoCursor]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/Empresa' }
+                  proximoCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+    post:
+      tags: [empresas]
+      operationId: criarEmpresa
+      summary: Cria empresa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmpresaEntrada' }
+      responses:
+        '201':
+          description: Criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Empresa' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /empresas/{empresaId}:
+    parameters:
+      - $ref: '#/components/parameters/EmpresaId'
+    get:
+      tags: [empresas]
+      operationId: obterEmpresa
+      summary: Detalhe da empresa
+      responses:
+        '200':
+          description: Empresa
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Empresa' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    patch:
+      tags: [empresas]
+      operationId: atualizarEmpresa
+      summary: Atualiza empresa (exige versao)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmpresaAtualizacao' }
+      responses:
+        '200':
+          description: Atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Empresa' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /atores:
+    get:
+      tags: [atores]
+      operationId: listarAtores
+      summary: Lista atores da organização (para escolher responsável)
+      parameters:
+        - $ref: '#/components/parameters/Limite'
+        - $ref: '#/components/parameters/Cursor'
+        - name: tipo
+          in: query
+          schema: { $ref: '#/components/schemas/TipoAtor' }
+        - name: ativo
+          in: query
+          schema: { type: boolean, default: true }
+        - name: busca
+          in: query
+          description: Filtro por nome (contém, sem diferenciar acento/caixa)
+          schema: { type: string, maxLength: 120 }
+        - name: ordem
+          in: query
+          schema: { type: string, enum: [nome, -nome], default: nome }
+      responses:
+        '200':
+          description: Página de atores
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens, proximoCursor]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/Ator' }
+                  proximoCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /projetos:
+    get:
+      tags: [projetos]
+      operationId: listarProjetos
+      summary: Lista projetos visíveis à sessão
+      parameters:
+        - $ref: '#/components/parameters/Limite'
+        - $ref: '#/components/parameters/Cursor'
+        - name: empresaId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: saude
+          in: query
+          schema: { $ref: '#/components/schemas/Saude' }
+        - name: fase
+          in: query
+          schema: { $ref: '#/components/schemas/Fase' }
+        - name: ordem
+          in: query
+          schema:
+            type: string
+            enum: [nome, -nome, prazoPrevisto, -prazoPrevisto, atualizadoEm, -atualizadoEm]
+            default: -atualizadoEm
+      responses:
+        '200':
+          description: Página de projetos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens, proximoCursor]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/Projeto' }
+                  proximoCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+    post:
+      tags: [projetos]
+      operationId: criarProjeto
+      summary: Cria projeto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjetoEntrada' }
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Projeto' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /projetos/{projetoId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjetoId'
+    get:
+      tags: [projetos]
+      operationId: obterProjeto
+      summary: Detalhe do projeto
+      responses:
+        '200':
+          description: Projeto
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Projeto' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    patch:
+      tags: [projetos]
+      operationId: atualizarProjeto
+      summary: Atualiza projeto (exige versao)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjetoAtualizacao' }
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Projeto' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /eventos:
+    get:
+      tags: [eventos]
+      operationId: listarEventos
+      summary: Timeline, do mais recente para o mais antigo (ou ao vivo com `depoisDe`)
+      description: |
+        `agent.heartbeat` fica de fora, a menos que seja pedido em `tipo`.
+      parameters:
+        - $ref: '#/components/parameters/Limite'
+        - $ref: '#/components/parameters/Cursor'
+        - name: empresaId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: projetoId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: tipo
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/TipoEvento' }
+        - name: desde
+          in: query
+          schema: { type: string, format: date-time }
+        - name: depoisDe
+          in: query
+          description: |
+            Timeline ao vivo: só eventos POSTERIORES a este `id`, em ordem
+            CRESCENTE (mais antigo primeiro). `proximoCursor` segue para frente;
+            null = está em dia. Não combina com `cursor`.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Página de eventos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens, proximoCursor]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/Evento' }
+                  proximoCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /analises:
+    get:
+      tags: [analises]
+      operationId: listarAnalises
+      summary: Análises de IA de um alvo, da mais recente para a mais antiga
+      parameters:
+        - $ref: '#/components/parameters/Limite'
+        - $ref: '#/components/parameters/Cursor'
+        - name: alvoTipo
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
+        - name: alvoId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: tipo
+          in: query
+          schema: { $ref: '#/components/schemas/TipoAnalise' }
+      responses:
+        '200':
+          description: Página de análises (vazia se ainda não há nenhuma)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens, proximoCursor, solicitacaoPendente]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/Analise' }
+                  proximoCursor: { type: [string, 'null'] }
+                  solicitacaoPendente:
+                    description: Solicitação na fila ou gerando para este alvo/tipo (quem abre a tela depois também vê)
+                    oneOf:
+                      - $ref: '#/components/schemas/SolicitacaoAnaliseEstado'
+                      - type: 'null'
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+    post:
+      tags: [analises]
+      operationId: solicitarAnalise
+      summary: Pede uma nova análise; responde na hora, sem esperar o modelo
+      description: |
+        Idempotente por alvo + tipo: se já há solicitação `na_fila` ou
+        `gerando` para o mesmo `alvoTipo`/`alvoId`/`tipo`, devolve ESSA (mesmo
+        `id`) em vez de enfileirar outra.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitacaoAnalise' }
+      responses:
+        '202':
+          description: Aceita (nova ou a pendente que já existia)
+          headers:
+            Location:
+              description: '`/api/analises/solicitacoes/{id}`'
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SolicitacaoAnaliseEstado' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '429': { $ref: '#/components/responses/MuitasTentativas' }
+
+  /analises/solicitacoes/{solicitacaoId}:
+    parameters:
+      - name: solicitacaoId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [analises]
+      operationId: obterSolicitacaoAnalise
+      summary: Estado de uma solicitação (polling curto enquanto pendente)
+      responses:
+        '200':
+          description: Estado atual
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SolicitacaoAnaliseEstado' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+components:
+  securitySchemes:
+    sessao:
+      type: apiKey
+      in: cookie
+      name: __Host-hub_sessao
+
+  parameters:
+    Limite:
+      name: limite
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Cursor:
+      name: cursor
+      in: query
+      description: Valor opaco devolvido em `proximoCursor`
+      schema: { type: string }
+    EmpresaId:
+      name: empresaId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProjetoId:
+      name: projetoId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Invalido:
+      description: Entrada inválida
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    NaoAutenticado:
+      description: Sem sessão ou sessão expirada
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    SemPermissao:
+      description: Sessão válida, sem permissão para a ação
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    NaoEncontrado:
+      description: Não existe ou não é visível para a sessão
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    Conflito:
+      description: Versão desatualizada (outra pessoa alterou antes)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+    MuitasTentativas:
+      description: Limite de tentativas excedido
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+
+  schemas:
+    Problema:
+      type: object
+      description: RFC 9457 (problem+json) com extensões do Hub
+      required: [type, title, status, codigo]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        codigo:
+          type: string
+          description: Código estável para o front tratar (ex. `sessao_expirada`, `sem_permissao`, `validacao`, `versao_desatualizada`)
+        campos:
+          type: array
+          description: Erros por campo (só em validação)
+          items:
+            type: object
+            required: [campo, codigo, mensagem]
+            properties:
+              campo: { type: string, description: 'Caminho do campo, ex. `nome`' }
+              codigo: { type: string }
+              mensagem: { type: string }
+
+    Credenciais:
+      type: object
+      required: [email, senha]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        senha: { type: string, minLength: 1, maxLength: 200, writeOnly: true }
+
+    Sessao:
+      type: object
+      required: [usuario, organizacao, permissoes, expiraEm]
+      properties:
+        usuario: { $ref: '#/components/schemas/Usuario' }
+        organizacao: { $ref: '#/components/schemas/Organizacao' }
+        permissoes:
+          type: array
+          description: Ações que a sessão pode executar (o back continua sendo quem nega)
+          items: { $ref: '#/components/schemas/Permissao' }
+        expiraEm: { type: string, format: date-time }
+
+    Usuario:
+      type: object
+      required: [id, atorId, nome, email, papel]
+      properties:
+        id: { type: string, format: uuid }
+        atorId:
+          type: string
+          format: uuid
+          description: Ator (tipo `pessoa`) desta pessoa; é o id usado em atribuições
+        nome: { type: string }
+        email: { type: string, format: email }
+        papel: { type: string, enum: [administrador, gestor, membro] }
+
+    Permissao:
+      type: string
+      enum:
+        - empresas.ler
+        - empresas.criar
+        - empresas.editar
+        - projetos.ler
+        - projetos.criar
+        - projetos.editar
+        - atores.ler
+        - eventos.ler
+        - analises.ler
+        - analises.solicitar
+
+    Organizacao:
+      type: object
+      description: Raiz do isolamento de dados (hoje só a Facilitcorp)
+      required: [id, nome]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+
+    TipoAtor:
+      type: string
+      enum: [pessoa, agente, automacao]
+
+    AtorResumo:
+      type: object
+      description: Forma curta de um ator, embutida onde há atribuição
+      required: [id, tipo, nome, ativo]
+      properties:
+        id: { type: string, format: uuid }
+        tipo: { $ref: '#/components/schemas/TipoAtor' }
+        nome: { type: string }
+        ativo:
+          type: boolean
+          description: Inativo aparece no histórico, mas não recebe atribuição nova
+        avatarUrl:
+          type: [string, 'null']
+          format: uri
+          description: URL assinada e temporária (arquivo privado); não guardar em cache longo
+
+    Ator:
+      allOf:
+        - $ref: '#/components/schemas/AtorResumo'
+        - type: object
+          properties:
+            descricao:
+              type: [string, 'null']
+              description: Ex. o que o agente ou a automação faz
+
+    Empresa:
+      type: object
+      description: Empresa da organização. NÃO é tenant (D-006).
+      required: [id, organizacaoId, nome, empresaMaeId, criadaEm, atualizadaEm, versao]
+      properties:
+        id: { type: string, format: uuid }
+        organizacaoId:
+          type: string
+          format: uuid
+          description: Somente leitura; vem da sessão
+        nome: { type: string }
+        empresaMaeId:
+          type: [string, 'null']
+          format: uuid
+          description: Sub-empresa dentro da MESMA organização; null quando fica direto sob ela
+        criadaEm: { type: string, format: date-time }
+        atualizadaEm: { type: string, format: date-time }
+        versao:
+          type: integer
+          description: Controle de concorrência otimista; enviar no PATCH
+
+    EmpresaEntrada:
+      type: object
+      required: [nome]
+      additionalProperties: false
+      properties:
+        nome: { type: string, minLength: 2, maxLength: 160 }
+        empresaMaeId: { type: [string, 'null'], format: uuid }
+
+    EmpresaAtualizacao:
+      type: object
+      required: [versao]
+      additionalProperties: false
+      properties:
+        versao: { type: integer }
+        nome: { type: string, minLength: 2, maxLength: 160 }
+
+    Saude:
+      type: string
+      enum: [verde, amarelo, vermelho]
+
+    Fase:
+      type: string
+      enum: [planejamento, execucao, pausado, concluido, cancelado]
+
+    Projeto:
+      type: object
+      required: [id, empresaId, nome, fase, saude, responsavel, inicioPrevisto, prazoPrevisto, concluidoEm, criadoEm, atualizadoEm, versao]
+      properties:
+        id: { type: string, format: uuid }
+        empresaId: { type: string, format: uuid }
+        nome: { type: string }
+        descricao: { type: [string, 'null'] }
+        fase: { $ref: '#/components/schemas/Fase' }
+        saude: { $ref: '#/components/schemas/Saude' }
+        responsavel:
+          description: Ator responsável (pessoa, agente ou automação); null se ninguém
+          oneOf:
+            - $ref: '#/components/schemas/AtorResumo'
+            - type: 'null'
+        inicioPrevisto: { type: [string, 'null'], format: date }
+        prazoPrevisto: { type: [string, 'null'], format: date }
+        concluidoEm: { type: [string, 'null'], format: date-time }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+        versao: { type: integer }
+
+    ProjetoEntrada:
+      type: object
+      required: [empresaId, nome]
+      additionalProperties: false
+      properties:
+        empresaId: { type: string, format: uuid }
+        nome: { type: string, minLength: 2, maxLength: 160 }
+        descricao: { type: [string, 'null'], maxLength: 4000 }
+        responsavelId:
+          type: [string, 'null']
+          format: uuid
+          description: '`id` de um ator ativo (ver `listarAtores`)'
+        inicioPrevisto: { type: [string, 'null'], format: date }
+        prazoPrevisto: { type: [string, 'null'], format: date }
+
+    ProjetoAtualizacao:
+      type: object
+      required: [versao]
+      additionalProperties: false
+      properties:
+        versao: { type: integer }
+        nome: { type: string, minLength: 2, maxLength: 160 }
+        descricao: { type: [string, 'null'], maxLength: 4000 }
+        fase: { $ref: '#/components/schemas/Fase' }
+        saude: { $ref: '#/components/schemas/Saude' }
+        responsavelId:
+          type: [string, 'null']
+          format: uuid
+          description: '`id` de um ator ativo (ver `listarAtores`)'
+        inicioPrevisto: { type: [string, 'null'], format: date }
+        prazoPrevisto: { type: [string, 'null'], format: date }
+
+    TipoEvento:
+      type: string
+      description: |
+        Identificadores estáveis (D-009); novos tipos só se acrescentam.
+        O front trata tipo desconhecido como genérico (não quebra a tela).
+      enum:
+        - project.created
+        - project.updated
+        - demand.created
+        - task.completed
+        - decision.created
+        - decision.approved
+        - project.blocked
+        - project.unblocked
+        - document.added
+        - agent.heartbeat
+
+    Evento:
+      type: object
+      required: [id, tipo, ocorreuEm, autor, empresaId, projetoId, alvo, dados]
+      properties:
+        id: { type: string, format: uuid }
+        tipo: { $ref: '#/components/schemas/TipoEvento' }
+        ocorreuEm: { type: string, format: date-time }
+        autor:
+          description: Quem causou o evento; null quando foi o próprio sistema
+          oneOf:
+            - $ref: '#/components/schemas/AtorResumo'
+            - type: 'null'
+        empresaId: { type: [string, 'null'], format: uuid }
+        projetoId: { type: [string, 'null'], format: uuid }
+        alvo:
+          type: object
+          required: [tipo, id]
+          properties:
+            tipo: { type: string, enum: [empresa, projeto, demanda, tarefa, decisao, documento, ator] }
+            id: { type: string, format: uuid }
+            titulo:
+              type: [string, 'null']
+              description: Nome do alvo no momento do evento
+        dados:
+          type: object
+          description: Detalhe específico do tipo (ex. campos alterados em `project.updated`)
+          additionalProperties: true
+
+    AlvoAnaliseTipo:
+      type: string
+      enum: [organizacao, empresa, projeto]
+
+    TipoAnalise:
+      type: string
+      enum: [resumo, riscos, atencao]
+
+    SolicitacaoAnaliseEstado:
+      type: object
+      description: |
+        Polling: consultar a cada 5 s enquanto `na_fila`/`gerando`; parar em
+        `pronta` (ler `analiseId`) ou `falhou`.
+      required: [id, alvoTipo, alvoId, tipo, estado, analiseId, codigoFalha, criadaEm, atualizadaEm]
+      properties:
+        id: { type: string, format: uuid }
+        alvoTipo: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
+        alvoId: { type: string, format: uuid }
+        tipo: { $ref: '#/components/schemas/TipoAnalise' }
+        estado: { type: string, enum: [na_fila, gerando, pronta, falhou] }
+        analiseId:
+          type: [string, 'null']
+          format: uuid
+          description: Preenchido em `pronta`
+        codigoFalha:
+          type: [string, 'null']
+          description: Só em `falhou` (ex. `provedor_indisponivel`, `sem_dados`)
+        criadaEm: { type: string, format: date-time }
+        atualizadaEm: { type: string, format: date-time }
+
+    SolicitacaoAnalise:
+      type: object
+      required: [alvoTipo, alvoId, tipo]
+      additionalProperties: false
+      properties:
+        alvoTipo: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
+        alvoId: { type: string, format: uuid }
+        tipo: { $ref: '#/components/schemas/TipoAnalise' }
+
+    Analise:
+      type: object
+      required: [id, alvoTipo, alvoId, tipo, conteudo, geradaEm, baseadaAte, desatualizada, fontes, provedor, modelo, confianca]
+      properties:
+        id: { type: string, format: uuid }
+        alvoTipo: { $ref: '#/components/schemas/AlvoAnaliseTipo' }
+        alvoId: { type: string, format: uuid }
+        tipo: { $ref: '#/components/schemas/TipoAnalise' }
+        conteudo:
+          type: string
+          description: Texto em Markdown (o front sanitiza antes de exibir)
+        geradaEm: { type: string, format: date-time }
+        baseadaAte:
+          type: string
+          format: date-time
+          description: Instante do último evento considerado
+        desatualizada:
+          type: boolean
+          description: Houve eventos do alvo depois de `baseadaAte`
+        fontes:
+          type: array
+          description: O que a análise usou (para o usuário conferir)
+          items:
+            type: object
+            required: [tipo, id]
+            properties:
+              tipo: { type: string, enum: [evento, projeto, demanda, decisao, documento] }
+              id: { type: string, format: uuid }
+              titulo: { type: [string, 'null'] }
+        provedor:
+          type: string
+          description: Texto livre, sem enum de fornecedor (D-008)
+        modelo: { type: string }
+        confianca:
+          type: [string, 'null']
+          enum: [baixa, media, alta, null]
+          description: null quando não se aplica
+        autor:
+          description: Agente de IA que gerou, se for um ator cadastrado
+          oneOf:
+            - $ref: '#/components/schemas/AtorResumo'
+            - type: 'null'
