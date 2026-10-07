@@ -1,0 +1,15 @@
+{
+  "name": "facilit-hub",
+  "private": true,
+  "packageManager": "pnpm@10.34.6",
+  "engines": { "node": ">=22 <23" },
+  "scripts": {
+    "contrato:lint": "redocly lint api/openapi.yaml",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2"
+  }
+}

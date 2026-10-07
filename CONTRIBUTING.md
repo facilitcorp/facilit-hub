@@ -36,3 +36,17 @@
 Commit com segredo **não se conserta apagando o commit**: o valor deve ser
 considerado comprometido. Avise no grupo imediatamente para que a credencial
 seja **rotacionada**; só depois limpe o histórico, se for o caso.
+
+## Estrutura e ferramentas
+
+| Pasta | O que é |
+|---|---|
+| `api/openapi.yaml` | Contrato oficial (D-002). Muda por PR próprio. |
+| `web/` | Front-end (D-003). Tipos gerados do contrato em `web/src/api/gerado/` (não editar à mão). |
+| `server/` | Back-end (D-004). |
+| `docs/` | Decisões (`DECISOES.md`) e documentação. |
+
+- Node 22 (`.nvmrc`) e **pnpm** via Corepack (`corepack enable`); monorepo com
+  workspaces. Use só `pnpm` — nada de `package-lock.json` ou `yarn.lock`.
+- TypeScript `strict` em todo pacote. ESLint (flat config) + Prettier.
+- Cada pacote expõe os scripts `lint`, `typecheck`, `test` e `build`.
