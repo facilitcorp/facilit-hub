@@ -26,10 +26,10 @@ describe("login", () => {
   });
 });
 
-describe("Hoje na Facilitcorp", () => {
+describe("Hoje na <organização>", () => {
   it("mostra indicadores, empresas e projetos em andamento", async () => {
     renderizar("/");
-    expect(await screen.findByRole("heading", { name: "Hoje na Facilitcorp" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hoje na Exemplocorp" })).toBeInTheDocument();
     const indicador = (r: string) =>
       document.querySelector(`[data-indicador="${r}"]`)?.nextElementSibling?.textContent;
     expect(indicador("Empresas")).toBe("3");
@@ -212,7 +212,7 @@ describe("painel e permissões", () => {
             email: "d@exemplo.com",
             papel: "membro",
           },
-          organizacao: { id: "org-1", nome: "Grupo Exemplo" },
+          organizacao: { id: "org-1", nome: "Outra Org" },
           permissoes: ["empresas.ler", "projetos.ler"],
           expiraEm: new Date(Date.now() + 3_600_000).toISOString(),
         }),

@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useListarEmpresas } from "@/api/empresas";
 import { useObterPainel } from "@/api/painel";
 import { useListarProjetos } from "@/api/projetos";
+import { useNomeOrganizacao } from "@/api/sessao";
 import { CartaoEmpresa } from "@/componentes/empresas";
 import { TabelaProjetos } from "@/componentes/projetos";
 import { filtrosDoPainel } from "@/dominio/painel";
@@ -35,6 +36,7 @@ function Indicador({
 }
 
 export function Hoje() {
+  const organizacao = useNomeOrganizacao();
   const painel = useObterPainel();
   const empresas = useListarEmpresas();
   const projetos = useListarProjetos({
@@ -52,7 +54,7 @@ export function Hoje() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Hoje na Facilitcorp</h1>
+      <h1 className="text-2xl font-bold">Hoje na {organizacao}</h1>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Indicador rotulo="Empresas" valor={n.totalEmpresas} para="/empresas" />
         <Indicador rotulo="Projetos ativos" valor={n.projetosAtivos} para={links.ativos} />

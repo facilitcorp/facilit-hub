@@ -5,7 +5,7 @@ import { useObterSessao, useSair } from "@/api/sessao";
 import { Avatar, Carregando, Falha } from "@/ui";
 
 const menu = [
-  { para: "/", rotulo: "Hoje na Facilitcorp", icone: Sun, fim: true },
+  { para: "/", rotulo: "Hoje na", icone: Sun, fim: true },
   { para: "/empresas", rotulo: "Empresas", icone: Building2 },
   { para: "/projetos", rotulo: "Projetos", icone: FolderKanban },
   { para: "/documentos", rotulo: "Documentos", icone: FileText },
@@ -19,6 +19,7 @@ export function Estrutura() {
   if (sessao.isPending) return <Carregando />;
   if (sessao.isError) return <Falha erro={sessao.error} />;
   if (!sessao.data) return <Navigate to="/entrar" replace state={{ de: local.pathname }} />;
+  const organizacao = sessao.data.organizacao.nome;
 
   return (
     <div className="min-h-dvh md:flex">
@@ -44,7 +45,7 @@ export function Estrutura() {
               }
             >
               <m.icone className="size-4" />
-              {m.rotulo}
+              {m.fim ? `${m.rotulo} ${organizacao}` : m.rotulo}
             </NavLink>
           ))}
         </nav>

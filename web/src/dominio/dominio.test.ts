@@ -11,7 +11,6 @@ const base = {
   prioridade: "media",
   fase: "execucao",
   progresso: 0,
-  documentos: [],
   atualizadoEm: "2026-11-01T00:00:00Z",
 } as const;
 const p = (x: Partial<Projeto>) =>

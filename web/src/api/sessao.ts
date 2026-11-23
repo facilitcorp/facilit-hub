@@ -24,6 +24,11 @@ export function usePode(permissao: Permissao) {
   return useObterSessao().data?.permissoes.includes(permissao) ?? false;
 }
 
+/** Nome da organização da sessão (D-006): nada de nome de organização fixo no código. */
+export function useNomeOrganizacao() {
+  return useObterSessao().data?.organizacao.nome ?? "";
+}
+
 export function useEntrar() {
   const qc = useQueryClient();
   return useMutation({

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useObterEmpresa } from "@/api/empresas";
 import { useListarProjetos } from "@/api/projetos";
-import { usePode } from "@/api/sessao";
+import { useNomeOrganizacao, usePode } from "@/api/sessao";
 import type { Empresa as TEmpresa, LinkCanal } from "@/api/tipos";
 import { SeloStatusEmpresa } from "@/componentes/empresas";
 import { NovoProjeto } from "@/componentes/NovoProjeto";
@@ -103,6 +103,7 @@ export function Empresa() {
   const projetos = useListarProjetos({ empresaId: id });
   const [edicao, setEdicao] = useState<Edicao>(null);
   const podeCriarProjeto = usePode("projetos.criar");
+  const organizacao = useNomeOrganizacao();
   const fechar = () => setEdicao(null);
 
   if (consulta.isPending) return <Carregando />;
@@ -113,7 +114,7 @@ export function Empresa() {
     <div className="space-y-5">
       <nav className="text-sm text-slate-500">
         <Link to="/" className="hover:text-marca">
-          Facilitcorp
+          {organizacao}
         </Link>{" "}
         ›{" "}
         <Link to="/empresas" className="hover:text-marca">
