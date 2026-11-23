@@ -1,7 +1,7 @@
 import multipart from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Db } from '../db.js';
+import { escopo, type Db } from '../db.js';
 import { registrarEvento } from '../eventos.js';
 import { codificarCursor, decodificarCursor, Limite, lista } from '../paginacao.js';
 import { Problema } from '../problema.js';
@@ -183,11 +183,12 @@ function mimeDe(b: Buffer): string | null {
 const LIMITE_IMAGEM = { logo: 2 * 1024 * 1024, capa: 5 * 1024 * 1024 };
 const Imagem = z.enum(['logo', 'capa']);
 
-export function rotasEmpresas(app: FastifyInstance, db: Db) {
+export function rotasEmpresas(app: FastifyInstance, base: Db) {
   app.register(multipart, { limits: { fileSize: LIMITE_IMAGEM.capa, files: 1 } });
 
   app.get('/api/empresas', async (req) => {
     const s = exigir(req, 'empresas.ler');
+    const db = escopo(base, s.organizacaoId);
     const f = Filtros.parse(req.query);
     const offset = decodificarCursor(f.cursor, z.object({ o: z.number().int().min(0) }))?.o ?? 0;
     const params: unknown[] = [s.organizacaoId];
@@ -207,6 +208,7 @@ export function rotasEmpresas(app: FastifyInstance, db: Db) {
 
   app.post('/api/empresas', async (req, reply) => {
     const s = exigir(req, 'empresas.criar');
+    const db = escopo(base, s.organizacaoId);
     const d = EmpresaEntrada.parse(req.body);
     const id = await db.transacao(async (tx) => {
       if (d.empresaMaeId) await obter(tx, s.organizacaoId, d.empresaMaeId);
@@ -234,12 +236,14 @@ export function rotasEmpresas(app: FastifyInstance, db: Db) {
 
   app.get('/api/empresas/:empresaId', async (req) => {
     const s = exigir(req, 'empresas.ler');
+    const db = escopo(base, s.organizacaoId);
     const { empresaId } = z.object({ empresaId: z.uuid() }).parse(req.params);
     return paraEmpresa(await obter(db, s.organizacaoId, empresaId));
   });
 
   app.patch('/api/empresas/:empresaId', async (req) => {
     const s = exigir(req, 'empresas.editar');
+    const db = escopo(base, s.organizacaoId);
     const { empresaId } = z.object({ empresaId: z.uuid() }).parse(req.params);
     const { versao, ...d } = EmpresaAtualizacao.parse(req.body);
     await db.transacao(async (tx) => {
@@ -275,6 +279,7 @@ export function rotasEmpresas(app: FastifyInstance, db: Db) {
 
   app.get('/api/empresas/:empresaId/:imagem', async (req, reply) => {
     const s = exigir(req, 'empresas.ler');
+    const db = escopo(base, s.organizacaoId);
     const { empresaId, imagem } = z.object({ empresaId: z.uuid(), imagem: Imagem }).parse(req.params);
     const { rows } = await db.query<{ mime: string; conteudo: Uint8Array }>(
       `SELECT i.mime, i.conteudo FROM empresa_imagens i JOIN empresas e ON e.id = i.empresa_id
@@ -288,6 +293,7 @@ export function rotasEmpresas(app: FastifyInstance, db: Db) {
 
   app.put('/api/empresas/:empresaId/:imagem', async (req) => {
     const s = exigir(req, 'empresas.editar');
+    const db = escopo(base, s.organizacaoId);
     const { empresaId, imagem } = z.object({ empresaId: z.uuid(), imagem: Imagem }).parse(req.params);
     await obter(db, s.organizacaoId, empresaId);
     if (!req.isMultipart()) throw new Problema(400, 'validacao', 'Envie o arquivo em multipart/form-data, campo "arquivo"');
@@ -322,6 +328,7 @@ export function rotasEmpresas(app: FastifyInstance, db: Db) {
 
   app.delete('/api/empresas/:empresaId/:imagem', async (req) => {
     const s = exigir(req, 'empresas.editar');
+    const db = escopo(base, s.organizacaoId);
     const { empresaId, imagem } = z.object({ empresaId: z.uuid(), imagem: Imagem }).parse(req.params);
     await obter(db, s.organizacaoId, empresaId);
     await db.transacao(async (tx) => {

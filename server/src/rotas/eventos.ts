@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Db } from '../db.js';
+import { escopo, type Db } from '../db.js';
 import { codificarCursor, decodificarCursor, Limite, lista } from '../paginacao.js';
 import { exigir } from '../sessao.js';
 
@@ -32,9 +32,10 @@ const paraEvento = (l: Linha) => ({
   dados: l.dados,
 });
 
-export function rotasEventos(app: FastifyInstance, db: Db) {
+export function rotasEventos(app: FastifyInstance, base: Db) {
   app.get('/api/eventos', async (req) => {
     const s = exigir(req, 'eventos.ler');
+    const db = escopo(base, s.organizacaoId);
     const f = Filtros.parse(req.query);
     const params: unknown[] = [s.organizacaoId];
     const onde = ['e.organizacao_id = $1'];

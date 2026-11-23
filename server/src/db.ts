@@ -29,3 +29,32 @@ export function dbDoPool(pool: pg.Pool): Db {
     },
   };
 }
+
+/**
+ * Banco "dentro" de uma organização: toda consulta roda numa transação com
+ * `app.organizacao_id` definido, e o RLS do Postgres só deixa ver e gravar
+ * linhas dessa organização (D-006). É a segunda trava, além do filtro no SQL.
+ */
+export function escopo(db: Db, organizacaoId: string): Db {
+  const definir = (tx: Db) => tx.query("SELECT set_config('app.organizacao_id', $1, true)", [organizacaoId]);
+  return {
+    query: (sql, params) => db.transacao(async (tx) => {
+      await definir(tx);
+      return tx.query(sql, params);
+    }),
+    transacao: (fn) => db.transacao(async (tx) => {
+      await definir(tx);
+      return fn(tx);
+    }),
+  };
+}
+
+/** Superusuário ou BYPASSRLS ignoram o RLS: o app não sobe conectado assim. */
+export async function conferirUsuarioDoBanco(db: Db) {
+  const { rows } = await db.query<{ usuario: string; escapa: boolean }>(
+    'SELECT current_user AS usuario, (rolsuper OR rolbypassrls) AS escapa FROM pg_roles WHERE rolname = current_user',
+  );
+  if (rows[0]?.escapa) {
+    throw new Error(`usuário do banco "${rows[0].usuario}" ignora o RLS (superusuário ou BYPASSRLS); use um usuário comum`);
+  }
+}

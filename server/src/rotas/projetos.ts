@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Db } from '../db.js';
+import { escopo, type Db } from '../db.js';
 import { registrarEvento } from '../eventos.js';
 import { codificarCursor, decodificarCursor, Limite, lista } from '../paginacao.js';
 import { Problema } from '../problema.js';
@@ -118,9 +118,10 @@ const ORDEM: Record<z.infer<typeof Filtros>['ordem'], string> = {
 
 const Params = z.object({ projetoId: z.uuid() });
 
-export function rotasProjetos(app: FastifyInstance, db: Db) {
+export function rotasProjetos(app: FastifyInstance, base: Db) {
   app.get('/api/projetos', async (req) => {
     const s = exigir(req, 'projetos.ler');
+    const db = escopo(base, s.organizacaoId);
     const f = Filtros.parse(req.query);
     const offset = decodificarCursor(f.cursor, z.object({ o: z.number().int().min(0) }))?.o ?? 0;
     const params: unknown[] = [s.organizacaoId];
@@ -145,6 +146,7 @@ export function rotasProjetos(app: FastifyInstance, db: Db) {
 
   app.post('/api/projetos', async (req, reply) => {
     const s = exigir(req, 'projetos.criar');
+    const db = escopo(base, s.organizacaoId);
     const d = ProjetoEntrada.parse(req.body);
     const id = await db.transacao(async (tx) => {
       const empresa = (await tx.query('SELECT 1 FROM empresas WHERE id = $1 AND organizacao_id = $2', [d.empresaId, s.organizacaoId])).rows[0];
@@ -173,12 +175,14 @@ export function rotasProjetos(app: FastifyInstance, db: Db) {
 
   app.get('/api/projetos/:projetoId', async (req) => {
     const s = exigir(req, 'projetos.ler');
+    const db = escopo(base, s.organizacaoId);
     const { projetoId } = Params.parse(req.params);
     return paraProjeto(await obterProjeto(db, s.organizacaoId, projetoId));
   });
 
   app.patch('/api/projetos/:projetoId', async (req) => {
     const s = exigir(req, 'projetos.editar');
+    const db = escopo(base, s.organizacaoId);
     const { projetoId } = Params.parse(req.params);
     const { versao, ...d } = ProjetoAtualizacao.parse(req.body);
     await db.transacao(async (tx) => {
@@ -218,6 +222,7 @@ export function rotasProjetos(app: FastifyInstance, db: Db) {
 
   app.get('/api/projetos/:projetoId/atualizacoes', async (req) => {
     const s = exigir(req, 'projetos.ler');
+    const db = escopo(base, s.organizacaoId);
     const { projetoId } = Params.parse(req.params);
     const f = z.object({ limite: Limite, cursor: z.string().optional() }).parse(req.query);
     await obterProjeto(db, s.organizacaoId, projetoId);
@@ -236,6 +241,7 @@ export function rotasProjetos(app: FastifyInstance, db: Db) {
   // Atualização só se acrescenta: sem versão e sem mexer na `versao` do projeto (não derruba formulário aberto).
   app.post('/api/projetos/:projetoId/atualizacoes', async (req, reply) => {
     const s = exigir(req, 'projetos.atualizar');
+    const db = escopo(base, s.organizacaoId);
     const { projetoId } = Params.parse(req.params);
     const { texto } = z.strictObject({ texto: z.string().trim().min(1).max(4000) }).parse(req.body);
     const projeto = await obterProjeto(db, s.organizacaoId, projetoId);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { escopo } from '../src/db.js';
 import { registrarEvento } from '../src/eventos.js';
 import { appDeTeste, entrarComo } from './apoio.js';
 
@@ -9,9 +10,9 @@ describe('eventos', () => {
     const outra = await entrarComo(app, db, { email: 'bia@outra.com', papel: 'gestor', organizacao: 'Outra Organização' });
     const alvo = { tipo: 'projeto' as const, id: '00000000-0000-4000-8000-000000000001', titulo: 'Projeto Exemplo' };
     for (let i = 1; i <= 3; i++) {
-      await registrarEvento(db, { organizacaoId: ana.organizacaoId, tipo: 'project.updated', autorAtorId: ana.atorId, alvo, dados: { n: i } });
+      await registrarEvento(escopo(db, ana.organizacaoId), { organizacaoId: ana.organizacaoId, tipo: 'project.updated', autorAtorId: ana.atorId, alvo, dados: { n: i } });
     }
-    await registrarEvento(db, { organizacaoId: outra.organizacaoId, tipo: 'project.created', autorAtorId: null, alvo });
+    await registrarEvento(escopo(db, outra.organizacaoId), { organizacaoId: outra.organizacaoId, tipo: 'project.created', autorAtorId: null, alvo });
 
     const p1 = (await app.inject({ url: '/api/eventos?limite=2', cookies: ana.cookies })).json();
     expect(p1.itens.map((e: { dados: { n: number } }) => e.dados.n)).toEqual([3, 2]);
