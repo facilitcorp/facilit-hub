@@ -1,4 +1,5 @@
 import cookie from '@fastify/cookie';
+import estatico from '@fastify/static';
 import Fastify from 'fastify';
 import { ZodError } from 'zod';
 import type { Config } from './config.js';
@@ -15,8 +16,14 @@ import { COOKIE_SESSAO, lerSessao } from './sessao.js';
 
 const MUTACOES = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 
+// SPA no mesmo domínio (D-005). style-src com 'unsafe-inline' por causa de atributos style do React.
+const CSP = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:",
+  "connect-src 'self'", "font-src 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'",
+].join('; ');
+
 export function criarApp(db: Db, config: Config) {
-  const app = Fastify({ logger: false, trustProxy: true });
+  const app = Fastify({ logger: config.logs ?? false, trustProxy: true });
   app.register(cookie);
   app.decorateRequest('sessao', null);
 
@@ -27,7 +34,14 @@ export function criarApp(db: Db, config: Config) {
     }
   });
   app.addHook('preHandler', async (req) => {
-    req.sessao = await lerSessao(db, req.cookies[COOKIE_SESSAO]);
+    if (req.url.startsWith('/api/')) req.sessao = await lerSessao(db, req.cookies[COOKIE_SESSAO]);
+  });
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('content-security-policy', CSP);
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('referrer-policy', 'same-origin');
+    reply.header('strict-transport-security', 'max-age=31536000');
+    reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
   });
 
   app.setErrorHandler((erro, req, reply) => {
@@ -57,5 +71,18 @@ export function criarApp(db: Db, config: Config) {
   rotasProjetos(app, db);
   rotasDocumentos(app, db);
   rotasPainel(app, db);
+
+  // Front compilado (web/dist) servido pela própria API: um serviço, um domínio.
+  // Rota desconhecida fora de /api devolve o index.html (o React Router resolve).
+  if (config.webDir) {
+    app.register(estatico, { root: config.webDir, wildcard: false, maxAge: '1h' });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === 'GET' && !req.url.startsWith('/api/')) {
+        return reply.header('cache-control', 'no-cache').sendFile('index.html');
+      }
+      return reply.code(404).type('application/problem+json')
+        .send({ type: 'about:blank', title: 'Não encontrado', status: 404, codigo: 'nao_encontrado' });
+    });
+  }
   return app;
 }
