@@ -2,7 +2,8 @@ import { Link } from "react-router";
 import { clsx } from "clsx";
 import type { Projeto } from "@/api/tipos";
 import { dataCurta, diasAte, haQuanto, notaVelha } from "@/dominio/formato";
-import { projetoAberto } from "@/dominio/painel";
+import { useJanelaPrazo } from "@/api/painel";
+import { prazoProximo, projetoAberto } from "@/dominio/painel";
 import { fasesProjeto, statusProjeto } from "@/dominio/rotulos";
 import { Avatar, Progresso, Selo, Vazio } from "@/ui";
 
@@ -12,14 +13,16 @@ export function SeloStatusProjeto({ status }: { status: Projeto["status"] }) {
 }
 
 export function Prazo({ projeto }: { projeto: Projeto }) {
+  const janela = useJanelaPrazo();
   if (!projeto.prazoPrevisto) return <span className="text-slate-400">—</span>;
   const dias = diasAte(projeto.prazoPrevisto);
   const aberto = projetoAberto(projeto);
+  const proximo = janela !== undefined && prazoProximo(projeto, janela);
   return (
     <span
       className={clsx(
         aberto && dias < 0 && "font-medium text-red-600",
-        aberto && dias >= 0 && dias <= 14 && "font-medium text-amber-700",
+        proximo && dias >= 0 && "font-medium text-amber-700",
       )}
       title={aberto && dias < 0 ? `Atrasado ${-dias} dia(s)` : undefined}
     >

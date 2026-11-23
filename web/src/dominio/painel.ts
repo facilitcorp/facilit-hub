@@ -1,5 +1,5 @@
 import type { Projeto, StatusProjeto } from "@/api/tipos";
-import { DIAS_PRAZO_PROXIMO, dataDaqui, diasAte, instanteAtras } from "./formato";
+import { dataDaqui, diasAte, instanteAtras } from "./formato";
 
 export const STATUS_ABERTOS: StatusProjeto[] = [
   "nao_iniciado",
@@ -12,9 +12,14 @@ export function projetoAberto(p: Pick<Projeto, "status">) {
   return STATUS_ABERTOS.includes(p.status);
 }
 
-export function prazoProximo(p: Pick<Projeto, "status" | "prazoPrevisto">, agora = Date.now()) {
+/** Prazo vencido ou dentro da janela do back (`Painel.janelaPrazoDias`), com projeto aberto. */
+export function prazoProximo(
+  p: Pick<Projeto, "status" | "prazoPrevisto">,
+  janelaPrazoDias: number,
+  agora = Date.now(),
+) {
   return (
-    projetoAberto(p) && !!p.prazoPrevisto && diasAte(p.prazoPrevisto, agora) <= DIAS_PRAZO_PROXIMO
+    projetoAberto(p) && !!p.prazoPrevisto && diasAte(p.prazoPrevisto, agora) <= janelaPrazoDias
   );
 }
 

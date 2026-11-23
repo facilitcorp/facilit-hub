@@ -31,8 +31,6 @@ export function diasAte(data: string, agora = Date.now()) {
 }
 
 export const DIAS_NOTA_VELHA = 7;
-/** Mesmo padrão do back (`Painel.janelaPrazoDias`); a Home usa o valor que vem do back. */
-export const DIAS_PRAZO_PROXIMO = 7;
 
 export function notaVelha(iso: string | null | undefined, agora = Date.now()) {
   return !iso || agora - new Date(iso).getTime() > DIAS_NOTA_VELHA * DIA;

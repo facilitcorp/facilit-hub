@@ -29,8 +29,10 @@ describe("filtrosDoPainel", () => {
     );
   });
   it("prazoProximo ignora projeto concluído", () => {
-    expect(prazoProximo(p({ prazoPrevisto: "2026-11-25" }), agora)).toBe(true);
-    expect(prazoProximo(p({ status: "concluido", prazoPrevisto: "2026-11-25" }), agora)).toBe(
+    expect(prazoProximo(p({ prazoPrevisto: "2026-11-25" }), 7, agora)).toBe(true);
+    expect(prazoProximo(p({ prazoPrevisto: "2026-12-05" }), 7, agora)).toBe(false);
+    expect(prazoProximo(p({ prazoPrevisto: "2026-12-05" }), 15, agora)).toBe(true);
+    expect(prazoProximo(p({ status: "concluido", prazoPrevisto: "2026-11-25" }), 7, agora)).toBe(
       false,
     );
   });
