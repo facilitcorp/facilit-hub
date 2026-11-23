@@ -9,7 +9,8 @@ COPY web/package.json web/
 COPY server/package.json server/
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm --filter @facilit-hub/web build && pnpm --filter @facilit-hub/server build
+RUN pnpm --filter @facilit-hub/web build && pnpm --filter @facilit-hub/server build \
+ && rm -f web/dist/mockServiceWorker.js  # mocks só existem em desenvolvimento
 
 FROM node:22-slim AS execucao
 WORKDIR /app
