@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-marca: oklch(0.52 0.17 255);
+  --color-marca-forte: oklch(0.44 0.17 255);
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}

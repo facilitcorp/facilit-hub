@@ -1,0 +1,5 @@
+dist
+coverage
+src/api/gerado
+public/mockServiceWorker.js
+node_modules
