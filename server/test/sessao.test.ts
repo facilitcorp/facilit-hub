@@ -71,3 +71,23 @@ describe('sessão', () => {
     expect(r.json().campos.map((c: { campo: string }) => c.campo)).toEqual(expect.arrayContaining(['email', 'senha']));
   });
 });
+
+describe('front servido pela API', () => {
+  it('serve o index.html nas rotas do React, 404 problem+json em /api e cabeçalhos de segurança', async () => {
+    const { mkdtemp, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { criarApp } = await import('../src/app.js');
+    const { dbDeTeste } = await import('./apoio.js');
+    const pasta = await mkdtemp(join(tmpdir(), 'web-'));
+    await writeFile(join(pasta, 'index.html'), '<div id="raiz"></div>');
+    const app = criarApp(await dbDeTeste(), { origemPermitida: ORIGEM, sessaoHoras: 12, webDir: pasta });
+    const pagina = await app.inject({ url: '/empresas/123' });
+    expect(pagina.statusCode).toBe(200);
+    expect(pagina.body).toContain('raiz');
+    expect(pagina.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+    const api = await app.inject({ url: '/api/nao-existe' });
+    expect(api.statusCode).toBe(404);
+    expect(api.headers['content-type']).toContain('application/problem+json');
+  });
+});
