@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Facilit Hub API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Contrato oficial entre front-end e back-end do Facilit Hub.
 
@@ -26,8 +26,10 @@ info:
     - Responsáveis são **atores** (D-007): pessoa, agente de IA ou automação.
       Atribuições apontam para `atorId`, nunca para `usuarioId`.
     - Histórico (timeline) = eventos (D-009).
-    - Escopo MVP (D-010): IA e análises ficaram para fase posterior e NÃO
-      estão neste contrato.
+    - Escopo MVP (D-010, D-012): IA, análises, demandas e tarefas ficaram
+      para fase posterior e NÃO estão neste contrato.
+    - Nenhum campo de senha ou credencial de terceiros existe neste contrato
+      (D-012): o Hub registra o que se usa e onde acessar, nunca como entrar.
 servers:
   - url: /api
 security:
@@ -44,6 +46,10 @@ tags:
     description: Projetos de cada empresa
   - name: eventos
     description: Timeline — eventos de domínio (somente leitura)
+  - name: painel
+    description: Home "Hoje na Facilitcorp" — números objetivos do grupo
+  - name: documentos
+    description: Documentos e links dos projetos (só links no MVP)
 
 paths:
   /sessao:
@@ -295,11 +301,19 @@ paths:
         - name: responsavelId
           in: query
           schema: { type: string, format: uuid }
+        - name: prazoAte
+          in: query
+          description: Só projetos com `prazoPrevisto` até esta data (inclusive)
+          schema: { type: string, format: date }
+        - name: concluidoDesde
+          in: query
+          description: Só projetos com `concluidoEm` a partir deste instante
+          schema: { type: string, format: date-time }
         - name: ordem
           in: query
           schema:
             type: string
-            enum: [nome, -nome, prazoPrevisto, -prazoPrevisto, prioridade, -prioridade, atualizadoEm, -atualizadoEm]
+            enum: [nome, -nome, prazoPrevisto, -prazoPrevisto, prioridade, -prioridade, atualizadoEm, -atualizadoEm, concluidoEm, -concluidoEm]
             default: -atualizadoEm
       responses:
         '200':
@@ -369,6 +383,167 @@ paths:
         '403': { $ref: '#/components/responses/SemPermissao' }
         '404': { $ref: '#/components/responses/NaoEncontrado' }
         '409': { $ref: '#/components/responses/Conflito' }
+
+  /projetos/{projetoId}/atualizacoes:
+    parameters:
+      - $ref: '#/components/parameters/ProjetoId'
+    get:
+      tags: [projetos]
+      operationId: listarAtualizacoesProjeto
+      summary: Atualizações do projeto, da mais recente para a mais antiga
+      parameters:
+        - $ref: '#/components/parameters/Limite'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Página de atualizações
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens, proximoCursor]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/NotaAndamento' }
+                  proximoCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    post:
+      tags: [projetos]
+      operationId: registrarAtualizacaoProjeto
+      summary: Registra uma atualização ("onde estamos"); autor = sessão
+      description: |
+        Não exige `versao`: atualização só se acrescenta, nunca conflita.
+        Vira a `ultimaAtualizacao` do projeto e gera `project.updated` com a
+        nota em `dados.notaAndamento`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotaAndamentoEntrada' }
+      responses:
+        '201':
+          description: Registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotaAndamento' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /documentos:
+    get:
+      tags: [documentos]
+      operationId: listarDocumentos
+      summary: Documentos e links (menu Documentos e aba do projeto)
+      parameters:
+        - $ref: '#/components/parameters/Limite'
+        - $ref: '#/components/parameters/Cursor'
+        - name: projetoId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: empresaId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: tipo
+          in: query
+          schema: { $ref: '#/components/schemas/TipoDocumento' }
+        - name: busca
+          in: query
+          description: Filtro por nome (contém, sem diferenciar acento/caixa)
+          schema: { type: string, maxLength: 120 }
+        - name: ordem
+          in: query
+          schema: { type: string, enum: [nome, -nome, criadoEm, -criadoEm], default: -criadoEm }
+      responses:
+        '200':
+          description: Página de documentos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens, proximoCursor]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/Documento' }
+                  proximoCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+    post:
+      tags: [documentos]
+      operationId: criarDocumento
+      summary: Registra um documento/link num projeto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentoEntrada' }
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Documento' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /documentos/{documentoId}:
+    parameters:
+      - name: documentoId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [documentos]
+      operationId: atualizarDocumento
+      summary: Atualiza documento/link (exige versao)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentoAtualizacao' }
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Documento' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+    delete:
+      tags: [documentos]
+      operationId: removerDocumento
+      summary: Remove documento/link. Idempotente.
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /painel:
+    get:
+      tags: [painel]
+      operationId: obterPainel
+      summary: Números da Home "Hoje na Facilitcorp" (sem IA, só contagem)
+      description: |
+        Contagens objetivas da organização da sessão. Cada número tem um
+        filtro equivalente em `listarProjetos`, para o card abrir a lista:
+        ativos = `status=em_andamento`; bloqueados = `status=bloqueado`;
+        próximos do prazo = `prazoAte=hoje+janelaPrazoDias` e status não
+        final (concluido/cancelado); concluídos recentemente =
+        `concluidoDesde=agora-janelaConcluidosDias`.
+      responses:
+        '200':
+          description: Painel
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Painel' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
 
   /eventos:
     get:
@@ -542,6 +717,9 @@ components:
         - projetos.ler
         - projetos.criar
         - projetos.editar
+        - projetos.atualizar
+        - documentos.ler
+        - documentos.editar
         - atores.ler
         - eventos.ler
 
@@ -592,15 +770,24 @@ components:
       description: |
         Empresa da organização. NÃO é tenant (D-006). Os projetos vinculados
         vêm de `listarProjetos?empresaId=`; aqui só os totais.
-      required: [id, organizacaoId, nome, descricao, status, logoUrl, capaUrl, links, contatos, endereco, observacoes, responsaveis, totalProjetos, totalProjetosEmAndamento, empresaMaeId, criadaEm, atualizadaEm, versao]
+      required: [id, organizacaoId, nome, nomeFantasia, razaoSocial, slogan, descricaoCurta, descricao, segmento, status, logoUrl, capaUrl, cnpj, telefone, whatsapp, email, links, ferramentas, contatos, endereco, observacoes, responsaveis, totalProjetos, totalProjetosEmAndamento, empresaMaeId, criadaEm, atualizadaEm, versao]
       properties:
         id: { type: string, format: uuid }
         organizacaoId:
           type: string
           format: uuid
           description: Somente leitura; vem da sessão
-        nome: { type: string }
-        descricao: { type: [string, 'null'] }
+        nome: { type: string, description: Como a empresa é chamada no grupo }
+        nomeFantasia: { type: [string, 'null'] }
+        razaoSocial: { type: [string, 'null'] }
+        slogan: { type: [string, 'null'] }
+        descricaoCurta:
+          type: [string, 'null']
+          description: Uma frase sobre o que a empresa faz (cards e cabeçalho)
+        descricao:
+          type: [string, 'null']
+          description: Descrição completa
+        segmento: { type: [string, 'null'], description: 'Texto livre, ex. "Rastreamento veicular"' }
         status: { $ref: '#/components/schemas/StatusEmpresa' }
         logoUrl:
           type: [string, 'null']
@@ -610,9 +797,31 @@ components:
           type: [string, 'null']
           format: uri
           description: URL assinada e temporária
-        links: { $ref: '#/components/schemas/LinksEmpresa' }
+        cnpj:
+          oneOf:
+            - $ref: '#/components/schemas/Cnpj'
+            - type: 'null'
+        telefone:
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+        whatsapp:
+          description: O front monta o link wa.me
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+        email: { type: [string, 'null'], format: email, description: E-mail principal }
+        links:
+          type: array
+          description: Links e canais (site, redes sociais...), na ordem de exibição
+          items: { $ref: '#/components/schemas/LinkEmpresa' }
+        ferramentas:
+          type: array
+          description: Sistemas e ferramentas que a empresa usa (nunca credenciais)
+          items: { $ref: '#/components/schemas/FerramentaEmpresa' }
         contatos:
           type: array
+          description: Outros contatos
           items: { $ref: '#/components/schemas/ContatoEmpresa' }
         endereco:
           oneOf:
@@ -688,9 +897,34 @@ components:
       additionalProperties: false
       properties:
         nome: { type: string, minLength: 2, maxLength: 160 }
-        descricao: { type: [string, 'null'], maxLength: 4000 }
+        nomeFantasia: { type: [string, 'null'], maxLength: 160 }
+        razaoSocial: { type: [string, 'null'], maxLength: 200 }
+        slogan: { type: [string, 'null'], maxLength: 160 }
+        descricaoCurta: { type: [string, 'null'], maxLength: 280 }
+        descricao: { type: [string, 'null'], maxLength: 8000 }
+        segmento: { type: [string, 'null'], maxLength: 120 }
         status: { $ref: '#/components/schemas/StatusEmpresa' }
-        links: { $ref: '#/components/schemas/LinksEmpresa' }
+        cnpj:
+          oneOf:
+            - $ref: '#/components/schemas/Cnpj'
+            - type: 'null'
+        telefone:
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+        whatsapp:
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+        email: { type: [string, 'null'], format: email, maxLength: 254 }
+        links:
+          type: array
+          maxItems: 30
+          items: { $ref: '#/components/schemas/LinkEmpresa' }
+        ferramentas:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/FerramentaEmpresa' }
         contatos:
           type: array
           maxItems: 30
@@ -709,17 +943,42 @@ components:
     EmpresaAtualizacao:
       type: object
       description: |
-        `links` e `endereco` são parciais (só os campos enviados mudam; null
-        apaga). `contatos` e `responsaveis`, quando enviados, SUBSTITUEM a
-        lista inteira.
+        Só os campos enviados mudam. `endereco` é parcial (null apaga).
+        `links`, `ferramentas`, `contatos` e `responsaveis`, quando enviados,
+        SUBSTITUEM a lista inteira (mesma `versao`, mesmo 409 do formulário).
       required: [versao]
       additionalProperties: false
       properties:
         versao: { type: integer }
         nome: { type: string, minLength: 2, maxLength: 160 }
-        descricao: { type: [string, 'null'], maxLength: 4000 }
+        nomeFantasia: { type: [string, 'null'], maxLength: 160 }
+        razaoSocial: { type: [string, 'null'], maxLength: 200 }
+        slogan: { type: [string, 'null'], maxLength: 160 }
+        descricaoCurta: { type: [string, 'null'], maxLength: 280 }
+        descricao: { type: [string, 'null'], maxLength: 8000 }
+        segmento: { type: [string, 'null'], maxLength: 120 }
         status: { $ref: '#/components/schemas/StatusEmpresa' }
-        links: { $ref: '#/components/schemas/LinksEmpresa' }
+        cnpj:
+          oneOf:
+            - $ref: '#/components/schemas/Cnpj'
+            - type: 'null'
+        telefone:
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+        whatsapp:
+          oneOf:
+            - $ref: '#/components/schemas/Telefone'
+            - type: 'null'
+        email: { type: [string, 'null'], format: email, maxLength: 254 }
+        links:
+          type: array
+          maxItems: 30
+          items: { $ref: '#/components/schemas/LinkEmpresa' }
+        ferramentas:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/FerramentaEmpresa' }
         contatos:
           type: array
           maxItems: 30
@@ -743,20 +1002,70 @@ components:
       enum: [em_estruturacao, ativa, pausada, inativa]
       default: em_estruturacao
 
-    LinksEmpresa:
+    UrlExterna:
+      type: string
+      format: uri
+      maxLength: 500
+      pattern: '^https?://[^@/]+(/.*)?$'
+      description: http(s); sem usuário/senha embutidos na URL (o back recusa `user:senha@`)
+
+    Cnpj:
+      type: string
+      pattern: '^[0-9]{14}$'
+      description: Só dígitos; o back confere os dígitos verificadores
+
+    LinkEmpresa:
       type: object
+      description: Link ou canal da empresa. O front escolhe o ícone pelo `tipo`.
+      required: [tipo, nome, url, ativo]
       additionalProperties: false
       properties:
-        site: { type: [string, 'null'], format: uri, maxLength: 500 }
-        instagram: { type: [string, 'null'], format: uri, maxLength: 500 }
-        facebook: { type: [string, 'null'], format: uri, maxLength: 500 }
-        linkedin: { type: [string, 'null'], format: uri, maxLength: 500 }
-        youtube: { type: [string, 'null'], format: uri, maxLength: 500 }
-        whatsapp:
+        tipo: { $ref: '#/components/schemas/TipoLink' }
+        nome: { type: string, minLength: 1, maxLength: 80, description: 'Ex. "Instagram oficial"' }
+        url: { $ref: '#/components/schemas/UrlExterna' }
+        ativo: { type: boolean, default: true }
+
+    TipoLink:
+      type: string
+      enum: [site, instagram, facebook, linkedin, youtube, whatsapp, google_perfil, tiktok, outro]
+
+    FerramentaEmpresa:
+      type: object
+      description: |
+        Sistema ou ferramenta que a empresa usa e onde acessar. NUNCA guarda
+        senha, token ou credencial (D-012): não há campo para isso e o back
+        recusa qualquer propriedade extra.
+      required: [nome, categoria, status]
+      additionalProperties: false
+      properties:
+        nome: { type: string, minLength: 1, maxLength: 120, description: 'Ex. "GitHub", "Google Workspace"' }
+        categoria: { $ref: '#/components/schemas/CategoriaFerramenta' }
+        descricao: { type: [string, 'null'], maxLength: 500 }
+        url:
           oneOf:
-            - $ref: '#/components/schemas/Telefone'
+            - $ref: '#/components/schemas/UrlExterna'
             - type: 'null'
-          description: O front monta o link wa.me
+        observacao: { type: [string, 'null'], maxLength: 1000 }
+        status: { $ref: '#/components/schemas/StatusFerramenta' }
+
+    CategoriaFerramenta:
+      type: string
+      enum: [crm, financeiro, rastreamento, desenvolvimento, produtividade, marketing, sistema_interno, hospedagem, dominio, analytics, outro]
+
+    StatusFerramenta:
+      type: string
+      description: em_uso = usada hoje; em_implantacao = sendo adotada; descontinuada = não se usa mais (fica como registro)
+      enum: [em_uso, em_implantacao, descontinuada]
+      default: em_uso
+
+    EmpresaResumo:
+      type: object
+      description: Forma curta da empresa, embutida no projeto e no documento
+      required: [id, nome, logoUrl]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        logoUrl: { type: [string, 'null'], format: uri, description: URL assinada e temporária }
 
     StatusProjeto:
       type: string
@@ -777,9 +1086,10 @@ components:
 
     NotaAndamento:
       type: object
-      description: Última atualização escrita pelo gestor ("onde estamos")
-      required: [texto, em, autor]
+      description: Atualização escrita pelo gestor ou responsável ("onde estamos")
+      required: [id, texto, em, autor]
       properties:
+        id: { type: string, format: uuid }
         texto: { type: string }
         em: { type: string, format: date-time }
         autor:
@@ -787,14 +1097,23 @@ components:
             - $ref: '#/components/schemas/AtorResumo'
             - type: 'null'
 
+    NotaAndamentoEntrada:
+      type: object
+      required: [texto]
+      additionalProperties: false
+      properties:
+        texto: { type: string, minLength: 1, maxLength: 4000 }
+
     Projeto:
       type: object
-      required: [id, empresaId, nome, descricao, status, fase, prioridade, progresso, responsavel, inicioPrevisto, prazoPrevisto, concluidoEm, ultimaAtualizacao, proximosPassos, criadoEm, atualizadoEm, versao]
+      required: [id, empresaId, empresa, nome, descricao, objetivo, status, fase, prioridade, progresso, responsavel, inicioPrevisto, prazoPrevisto, concluidoEm, ultimaAtualizacao, proximaAcao, criadoEm, atualizadoEm, versao]
       properties:
         id: { type: string, format: uuid }
         empresaId: { type: string, format: uuid }
+        empresa: { $ref: '#/components/schemas/EmpresaResumo' }
         nome: { type: string }
         descricao: { type: [string, 'null'] }
+        objetivo: { type: [string, 'null'] }
         status: { $ref: '#/components/schemas/StatusProjeto' }
         fase: { $ref: '#/components/schemas/Fase' }
         prioridade: { $ref: '#/components/schemas/Prioridade' }
@@ -810,12 +1129,17 @@ components:
             - type: 'null'
         inicioPrevisto: { type: [string, 'null'], format: date }
         prazoPrevisto: { type: [string, 'null'], format: date }
-        concluidoEm: { type: [string, 'null'], format: date-time }
+        concluidoEm:
+          type: [string, 'null']
+          format: date-time
+          description: Preenchido pelo back quando o status vira `concluido`; volta a null se sair dele
         ultimaAtualizacao:
           oneOf:
             - $ref: '#/components/schemas/NotaAndamento'
             - type: 'null'
-        proximosPassos: { type: [string, 'null'] }
+        proximaAcao:
+          type: [string, 'null']
+          description: O que precisa acontecer agora (uma linha, ex. "Aguardando aprovação da diretoria")
         criadoEm: { type: string, format: date-time }
         atualizadoEm:
           type: string
@@ -831,6 +1155,7 @@ components:
         empresaId: { type: string, format: uuid }
         nome: { type: string, minLength: 2, maxLength: 160 }
         descricao: { type: [string, 'null'], maxLength: 4000 }
+        objetivo: { type: [string, 'null'], maxLength: 2000 }
         status: { $ref: '#/components/schemas/StatusProjeto' }
         fase: { $ref: '#/components/schemas/Fase' }
         prioridade: { $ref: '#/components/schemas/Prioridade' }
@@ -841,7 +1166,7 @@ components:
           description: '`id` de um ator ativo (ver `listarAtores`)'
         inicioPrevisto: { type: [string, 'null'], format: date }
         prazoPrevisto: { type: [string, 'null'], format: date }
-        proximosPassos: { type: [string, 'null'], maxLength: 4000 }
+        proximaAcao: { type: [string, 'null'], maxLength: 500 }
 
     ProjetoAtualizacao:
       type: object
@@ -851,6 +1176,7 @@ components:
         versao: { type: integer }
         nome: { type: string, minLength: 2, maxLength: 160 }
         descricao: { type: [string, 'null'], maxLength: 4000 }
+        objetivo: { type: [string, 'null'], maxLength: 2000 }
         status: { $ref: '#/components/schemas/StatusProjeto' }
         fase: { $ref: '#/components/schemas/Fase' }
         prioridade: { $ref: '#/components/schemas/Prioridade' }
@@ -861,12 +1187,77 @@ components:
           description: '`id` de um ator ativo (ver `listarAtores`)'
         inicioPrevisto: { type: [string, 'null'], format: date }
         prazoPrevisto: { type: [string, 'null'], format: date }
-        proximosPassos: { type: [string, 'null'], maxLength: 4000 }
-        notaAndamento:
-          type: string
-          minLength: 1
-          maxLength: 4000
-          description: Se enviada, vira a nova `ultimaAtualizacao` (autor = sessão) e entra no histórico
+        proximaAcao: { type: [string, 'null'], maxLength: 500 }
+
+    TipoDocumento:
+      type: string
+      enum: [github, figma, google_drive, homologacao, documentacao, apresentacao, outro]
+
+    Documento:
+      type: object
+      description: Documento ou link de um projeto. MVP só com links (D-012); upload fica para depois.
+      required: [id, projetoId, projeto, empresa, nome, tipo, url, observacao, autor, criadoEm, atualizadoEm, versao]
+      properties:
+        id: { type: string, format: uuid }
+        projetoId: { type: string, format: uuid }
+        projeto:
+          type: object
+          required: [id, nome]
+          properties:
+            id: { type: string, format: uuid }
+            nome: { type: string }
+        empresa: { $ref: '#/components/schemas/EmpresaResumo' }
+        nome: { type: string }
+        tipo: { $ref: '#/components/schemas/TipoDocumento' }
+        url: { $ref: '#/components/schemas/UrlExterna' }
+        observacao: { type: [string, 'null'] }
+        autor:
+          description: Quem registrou; null se o ator foi removido
+          oneOf:
+            - $ref: '#/components/schemas/AtorResumo'
+            - type: 'null'
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+        versao: { type: integer }
+
+    DocumentoEntrada:
+      type: object
+      required: [projetoId, nome, tipo, url]
+      additionalProperties: false
+      properties:
+        projetoId: { type: string, format: uuid }
+        nome: { type: string, minLength: 1, maxLength: 160 }
+        tipo: { $ref: '#/components/schemas/TipoDocumento' }
+        url: { $ref: '#/components/schemas/UrlExterna' }
+        observacao: { type: [string, 'null'], maxLength: 1000 }
+
+    DocumentoAtualizacao:
+      type: object
+      required: [versao]
+      additionalProperties: false
+      properties:
+        versao: { type: integer }
+        nome: { type: string, minLength: 1, maxLength: 160 }
+        tipo: { $ref: '#/components/schemas/TipoDocumento' }
+        url: { $ref: '#/components/schemas/UrlExterna' }
+        observacao: { type: [string, 'null'], maxLength: 1000 }
+
+    Painel:
+      type: object
+      description: Home "Hoje na Facilitcorp". Só contagem, sem IA (D-012).
+      required: [totalEmpresas, projetosAtivos, projetosBloqueados, projetosProximosDoPrazo, projetosConcluidosRecentemente, janelaPrazoDias, janelaConcluidosDias, geradoEm]
+      properties:
+        totalEmpresas: { type: integer, minimum: 0, description: Empresas não inativas }
+        projetosAtivos: { type: integer, minimum: 0, description: Status em_andamento }
+        projetosBloqueados: { type: integer, minimum: 0 }
+        projetosProximosDoPrazo:
+          type: integer
+          minimum: 0
+          description: Prazo vencido ou dentro da janela, com status não final (inclui atrasados)
+        projetosConcluidosRecentemente: { type: integer, minimum: 0 }
+        janelaPrazoDias: { type: integer, minimum: 1, description: 'Hoje 7; configuração do back' }
+        janelaConcluidosDias: { type: integer, minimum: 1, description: 'Hoje 30; configuração do back' }
+        geradoEm: { type: string, format: date-time }
 
     TipoEvento:
       type: string
@@ -874,6 +1265,8 @@ components:
         Identificadores estáveis (D-009); novos tipos só se acrescentam.
         O front trata tipo desconhecido como genérico (não quebra a tela).
       enum:
+        - company.created
+        - company.updated
         - project.created
         - project.updated
         - demand.created

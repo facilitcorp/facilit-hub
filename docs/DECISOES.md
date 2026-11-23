@@ -163,6 +163,8 @@ sem mudar quem publica.
 
 ## D-010 — MVP operacional primeiro
 
+> **Escopo reduzido pela D-012** (23/11/2026): demandas saem do MVP 1.
+
 Decidida pelo Paulo em 07/10/2026. Objetivo: gestores usando o Hub o quanto
 antes, organizando empresas → projetos → demandas → responsáveis → prazos →
 andamento → decisões → histórico.
@@ -217,3 +219,60 @@ A antiga `saude` sai: o status `bloqueado` cobre o caso.
 **Fase do projeto** (em que etapa): `descoberta` (padrão), `planejamento`,
 `execucao`, `validacao`, `entrega`.
 Aprovados pelo Paulo em 07/10/2026.
+
+## D-012 — MVP 1 reduzido: empresas e projetos
+
+Decidida pelo Paulo em 23/11/2026. Objetivo: o gestor entra, vê todas as
+empresas do grupo, abre uma, entende o que ela é (dados, links, ferramentas,
+responsáveis), vê os projetos dela, abre um, sabe como está e qual é a
+próxima ação, e registra uma atualização. **Funcional + simples + bem
+estruturado**; nada de abstração para problema que ainda não existe.
+
+**Ordem:** P1 fundação + login · P2 empresas · P3 ambiente da empresa ·
+P4 projetos · P5 ambiente do projeto · P6 atualizações · P7 Home simples ·
+P8 documentos/links.
+
+**Menu:** Hoje na Facilitcorp · Empresas · Projetos · Documentos.
+
+**Empresa (contrato v0.7.0):**
+- Identificação: nome, nome fantasia, razão social, logo, capa, slogan,
+  descrição curta, descrição completa, segmento, status (D-011).
+- Dados: CNPJ (só dígitos, dígito verificador conferido), endereço (cidade e
+  UF dentro dele), telefone, WhatsApp, e-mail principal, outros contatos,
+  observações internas. Não é ERP.
+- **Links e canais** viram lista (`links[]`: tipo, nome, URL, ativo) no lugar
+  dos campos fixos da v0.6.0; tipos: site, Instagram, Facebook, LinkedIn,
+  YouTube, WhatsApp, Google Perfil, TikTok, outro.
+- **Sistemas e ferramentas** (`ferramentas[]`): nome, categoria, descrição,
+  link, observação, status (`em_uso`, `em_implantacao`, `descontinuada`).
+- Listas da empresa (links, ferramentas, contatos, responsáveis) vão no
+  `PATCH` da empresa e substituem a lista inteira, com a mesma `versao`.
+
+**Nenhum campo de senha ou credencial**, em lugar nenhum do Hub. O Hub
+registra o que se usa e onde acessar, nunca como entrar. Garantia no
+contrato (`additionalProperties: false`) e no back (URL com `usuario:senha@`
+é recusada).
+
+**Projeto:** ganha `objetivo` e `empresa` embutida (nome e logo, para a Home
+e a lista geral); `proximosPassos` vira **`proximaAcao`** (uma linha, até 500
+caracteres). Progresso continua manual, 0–100.
+
+**Atualizações:** rota própria (`POST /projetos/{id}/atualizacoes`), sem
+`versao`, porque só se acrescentam e não conflitam. A mais recente é a
+`ultimaAtualizacao` do projeto. Sai do `PATCH` do projeto.
+
+**Documentos:** só links no MVP (nome, tipo, URL, observação), sempre ligados
+a um projeto; upload fica para depois. `GET /documentos` atende o menu e a
+aba do projeto.
+
+**Home:** `GET /painel` só com contagens (empresas, ativos, bloqueados,
+próximos do prazo, concluídos recentemente). Cada número tem filtro
+equivalente em `listarProjetos`. Janelas: prazo em até **7 dias** (inclui
+atrasados), concluídos nos últimos **30 dias**; ficam em configuração do back
+e voltam na resposta.
+
+**Fases futuras** (planejamento mantido, nada implementado agora): demandas e
+tarefas, Facilit AI e análises (D-008), Project Pulse, Health Score, previsão
+de atraso, integração com GitHub, `agent.heartbeat`, automações, dashboards e
+relatórios avançados, dependências, financeiro, workflow, notificações
+externas, busca semântica, upload de documentos.
