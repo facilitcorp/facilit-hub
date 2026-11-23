@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
 import { Problema } from './problema.js';
+import { rotasEventos } from './rotas/eventos.js';
 import { rotasSessao } from './rotas/sessao.js';
 import { COOKIE_SESSAO, lerSessao } from './sessao.js';
 
@@ -45,5 +46,6 @@ export function criarApp(db: Db, config: Config) {
 
   app.get('/api/saude', async () => ({ ok: true }));
   rotasSessao(app, db, config);
+  rotasEventos(app, db);
   return app;
 }
