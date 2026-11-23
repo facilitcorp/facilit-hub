@@ -276,3 +276,22 @@ tarefas, Facilit AI e análises (D-008), Project Pulse, Health Score, previsão
 de atraso, integração com GitHub, `agent.heartbeat`, automações, dashboards e
 relatórios avançados, dependências, financeiro, workflow, notificações
 externas, busca semântica, upload de documentos.
+
+## D-013 — Logo e capa no Postgres, servidos pela API
+
+Decisão técnica do dev-1 em 23/11/2026, para não depender de bucket nem de
+infraestrutura nova no MVP. Ajusta o "URL assinada" da D-004 e da D-011.
+
+- Logo e capa ficam em `empresa_imagens` (bytea), com tipo conferido pelo
+  conteúdo (PNG, JPEG ou WebP; SVG nunca) e limite de 2 MB / 5 MB.
+- `logoUrl`/`capaUrl` são caminhos na própria API
+  (`/api/empresas/{id}/logo?v=N`), lidos com o cookie de sessão — continuam
+  privados, sem URL pública. `v` muda a cada troca, então o navegador pode
+  guardar em cache (`Cache-Control: private`).
+- Volume esperado: poucas dezenas de empresas → poucas centenas de MB no
+  máximo. Quando houver upload de documentos (fase futura), migrar arquivos
+  para bucket com URL assinada sem mudar o contrato do front (o campo
+  continua sendo "a URL da imagem").
+
+**Descartado agora:** bucket com URL assinada — exige bucket, conta de
+serviço e permissão de assinatura (infra da plataforma) para servir um logo.
