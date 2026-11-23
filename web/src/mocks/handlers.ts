@@ -1,103 +1,158 @@
 import { http, HttpResponse } from "msw";
 import type {
-  AtorResumo,
   AtualizacaoEmpresa,
   AtualizacaoProjeto,
+  AtorResumo,
+  Documento,
+  DocumentoAtualizacao,
+  DocumentoEntrada,
   Empresa,
+  EmpresaEntrada,
   NovoProjeto,
+  Painel,
+  Permissao,
   Projeto,
+  Sessao,
 } from "@/api/tipos";
-import { atores, criarBase } from "./dados";
+import { atores, criarBase, novaEmpresa, novoProjeto, ORG } from "./dados";
 
 let base = criarBase();
-let sessao: AtorResumo | null = null;
+let sessao: Sessao | null = null;
+let seq = 0;
+
+const PERMISSOES: Permissao[] = [
+  "empresas.ler",
+  "empresas.criar",
+  "empresas.editar",
+  "projetos.ler",
+  "projetos.criar",
+  "projetos.editar",
+  "projetos.atualizar",
+  "documentos.ler",
+  "documentos.editar",
+  "atores.ler",
+  "eventos.ler",
+];
+
+function abrirSessao(): Sessao {
+  const a = atores[0]!;
+  return {
+    usuario: { id: "u1", atorId: a.id, nome: a.nome, email: "gestor@exemplo.com", papel: "gestor" },
+    organizacao: { id: ORG, nome: "Grupo Exemplo" },
+    permissoes: PERMISSOES,
+    expiraEm: new Date(Date.now() + 3_600_000).toISOString(),
+  };
+}
 
 /** Reinicia o estado (usado nos testes). */
 export function reiniciarMocks(opcoes: { logado?: boolean } = {}) {
   base = criarBase();
-  sessao = opcoes.logado ? atores[0]! : null;
+  sessao = opcoes.logado ? abrirSessao() : null;
 }
 
 const agora = () => new Date().toISOString();
-const naoEncontrado = () => HttpResponse.json({ mensagem: "Não encontrado" }, { status: 404 });
-const conflito = () => HttpResponse.json({ mensagem: "Versão desatualizada" }, { status: 409 });
+const id = (p: string) => `${p}-novo-${++seq}`;
+const problema = (status: number, codigo: string, title: string) =>
+  HttpResponse.json(
+    { type: "about:blank", title, status, codigo },
+    { status, headers: { "Content-Type": "application/problem+json" } },
+  );
+const naoEncontrado = () => problema(404, "nao_encontrado", "Não encontrado");
+const conflito = () => problema(409, "versao_desatualizada", "Versão desatualizada");
+const pagina = <T>(itens: T[]) => HttpResponse.json({ itens, proximoCursor: null });
+
+/** Merge: null apaga; ausente mantém. */
+function mesclar<T extends object>(atual: T, patch: object): T {
+  const r = { ...atual } as Record<string, unknown>;
+  for (const [k, v] of Object.entries(patch)) if (v !== undefined) r[k] = v;
+  return r as T;
+}
 
 function comContagem(e: Empresa): Empresa {
   const ps = base.projetos.filter((p) => p.empresa.id === e.id);
   return {
     ...e,
     totalProjetos: ps.length,
-    projetosEmAndamento: ps.filter((p) => p.status === "em_andamento").length,
+    totalProjetosEmAndamento: ps.filter((p) => p.status === "em_andamento").length,
   };
 }
 
-const ator = (id?: string | null) => atores.find((a) => a.id === id);
-
-/** Merge patch: null apaga o campo. */
-function mesclar<T extends object>(atual: T, patch: object): T {
-  const r = { ...atual } as Record<string, unknown>;
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null) delete r[k];
-    else if (v !== undefined) r[k] = v;
-  }
-  return r as T;
-}
+const ator = (atorId?: string | null): AtorResumo | null =>
+  atores.find((a) => a.id === atorId) ?? null;
+const resumoEmpresa = (e: Empresa) => ({ id: e.id, nome: e.nome, logoUrl: e.logoUrl });
+const API = "*/api";
 
 export const handlers = [
-  http.get("/api/sessao", () =>
-    sessao
-      ? HttpResponse.json({ ator: sessao })
-      : HttpResponse.json({ mensagem: "Não autenticado" }, { status: 401 }),
+  http.get(`${API}/sessao`, () =>
+    sessao ? HttpResponse.json(sessao) : problema(401, "sessao_expirada", "Sem sessão"),
   ),
-  http.post("/api/sessao", async ({ request }) => {
+  http.post(`${API}/sessao`, async ({ request }) => {
     const { email, senha } = (await request.json()) as { email: string; senha: string };
     if (!email || senha !== "demo")
-      return HttpResponse.json({ mensagem: "E-mail ou senha inválidos" }, { status: 401 });
-    sessao = atores[0]!;
-    return HttpResponse.json({ ator: sessao });
+      return problema(401, "credenciais_invalidas", "E-mail ou senha inválidos");
+    sessao = abrirSessao();
+    return HttpResponse.json(sessao);
   }),
-  http.delete("/api/sessao", () => {
+  http.delete(`${API}/sessao`, () => {
     sessao = null;
     return new HttpResponse(null, { status: 204 });
   }),
 
-  http.get("/api/atores", () => HttpResponse.json({ itens: atores, total: atores.length })),
+  http.get(`${API}/atores`, () => pagina(atores)),
 
-  http.get("/api/empresas", ({ request }) => {
-    const q = new URL(request.url).searchParams;
-    const status = q.get("status");
-    const busca = q.get("busca")?.toLowerCase();
-    const itens = base.empresas
-      .filter((e) => !status || e.status === status)
-      .filter((e) => !busca || e.nome.toLowerCase().includes(busca))
-      .map(comContagem);
-    return HttpResponse.json({ itens, total: itens.length });
+  http.get(`${API}/painel`, () => {
+    const ps = base.projetos;
+    const aberto = (p: Projeto) => !["concluido", "cancelado"].includes(p.status);
+    const limitePrazo = Date.now() + 7 * 86_400_000;
+    const limiteConcl = Date.now() - 30 * 86_400_000;
+    const painel: Painel = {
+      totalEmpresas: base.empresas.filter((e) => e.status !== "inativa").length,
+      projetosAtivos: ps.filter((p) => p.status === "em_andamento").length,
+      projetosBloqueados: ps.filter((p) => p.status === "bloqueado").length,
+      projetosProximosDoPrazo: ps.filter(
+        (p) => aberto(p) && p.prazoPrevisto && new Date(p.prazoPrevisto).getTime() <= limitePrazo,
+      ).length,
+      projetosConcluidosRecentemente: ps.filter(
+        (p) => p.concluidoEm && new Date(p.concluidoEm).getTime() >= limiteConcl,
+      ).length,
+      janelaPrazoDias: 7,
+      janelaConcluidosDias: 30,
+      geradoEm: agora(),
+    };
+    return HttpResponse.json(painel);
   }),
-  http.get("/api/empresas/:id", ({ params }) => {
+
+  http.get(`${API}/empresas`, ({ request }) => {
+    const q = new URL(request.url).searchParams;
+    const status = q.getAll("status");
+    const busca = q.get("busca")?.toLowerCase();
+    return pagina(
+      base.empresas
+        .filter((e) => status.length === 0 || status.includes(e.status))
+        .filter((e) => !busca || e.nome.toLowerCase().includes(busca))
+        .map(comContagem),
+    );
+  }),
+  http.get(`${API}/empresas/:id`, ({ params }) => {
     const e = base.empresas.find((x) => x.id === params.id);
     return e ? HttpResponse.json(comContagem(e)) : naoEncontrado();
   }),
-  http.post("/api/empresas", async ({ request }) => {
-    const dados = (await request.json()) as Partial<Empresa>;
-    const e: Empresa = {
-      id: `e${Date.now()}`,
-      versao: 1,
-      nome: dados.nome ?? "",
-      descricaoCurta: dados.descricaoCurta,
-      segmento: dados.segmento,
-      status: "em_estruturacao",
-      contatos: [],
-      links: [],
-      ferramentas: [],
-      responsaveis: [],
-      totalProjetos: 0,
-      projetosEmAndamento: 0,
-      atualizadoEm: agora(),
-    };
+  http.post(`${API}/empresas`, async ({ request }) => {
+    const { responsaveis, ...d } = (await request.json()) as EmpresaEntrada;
+    const e = novaEmpresa({
+      ...d,
+      id: id("e"),
+      responsaveis: (responsaveis ?? []).map((r) => ({
+        ator: ator(r.atorId)!,
+        papel: r.papel ?? null,
+      })),
+      criadaEm: agora(),
+      atualizadaEm: agora(),
+    });
     base.empresas.push(e);
     return HttpResponse.json(e, { status: 201 });
   }),
-  http.patch("/api/empresas/:id", async ({ params, request }) => {
+  http.patch(`${API}/empresas/:id`, async ({ params, request }) => {
     const i = base.empresas.findIndex((x) => x.id === params.id);
     if (i < 0) return naoEncontrado();
     const atual = base.empresas[i]!;
@@ -106,82 +161,143 @@ export const handlers = [
     const nova: Empresa = {
       ...mesclar(atual, resto),
       responsaveis: responsaveis
-        ? responsaveis.map((r) => ({ ator: ator(r.atorId)!, papel: r.papel }))
+        ? responsaveis.map((r) => ({ ator: ator(r.atorId)!, papel: r.papel ?? null }))
         : atual.responsaveis,
       versao: atual.versao + 1,
-      atualizadoEm: agora(),
+      atualizadaEm: agora(),
     };
     base.empresas[i] = nova;
-    for (const p of base.projetos)
-      if (p.empresa.id === nova.id) p.empresa = { ...p.empresa, nome: nova.nome };
+    for (const p of base.projetos) if (p.empresa.id === nova.id) p.empresa = resumoEmpresa(nova);
     return HttpResponse.json(comContagem(nova));
   }),
-
-  http.get("/api/projetos", ({ request }) => {
-    const q = new URL(request.url).searchParams;
-    const busca = q.get("busca")?.toLowerCase();
-    const itens = base.projetos
-      .filter((p) => !q.get("empresaId") || p.empresa.id === q.get("empresaId"))
-      .filter((p) => !q.get("status") || p.status === q.get("status"))
-      .filter((p) => !busca || p.nome.toLowerCase().includes(busca));
-    return HttpResponse.json({ itens, total: itens.length });
+  http.put(`${API}/empresas/:id/:imagem`, async ({ params, request }) => {
+    const e = base.empresas.find((x) => x.id === params.id);
+    if (!e) return naoEncontrado();
+    const arquivo = (await request.formData()).get("arquivo");
+    if (!(arquivo instanceof Blob)) return problema(400, "validacao", "Arquivo obrigatório");
+    const url =
+      typeof URL.createObjectURL === "function"
+        ? URL.createObjectURL(arquivo)
+        : "https://img.example/x.png";
+    if (params.imagem === "logo") e.logoUrl = url;
+    else e.capaUrl = url;
+    e.versao += 1;
+    return HttpResponse.json(comContagem(e));
   }),
-  http.get("/api/projetos/:id", ({ params }) => {
+  http.delete(`${API}/empresas/:id/:imagem`, ({ params }) => {
+    const e = base.empresas.find((x) => x.id === params.id);
+    if (!e) return naoEncontrado();
+    if (params.imagem === "logo") e.logoUrl = null;
+    else e.capaUrl = null;
+    e.versao += 1;
+    return HttpResponse.json(comContagem(e));
+  }),
+
+  http.get(`${API}/projetos`, ({ request }) => {
+    const q = new URL(request.url).searchParams;
+    const status = q.getAll("status");
+    const busca = q.get("busca")?.toLowerCase();
+    const prazoAte = q.get("prazoAte");
+    const concluidoDesde = q.get("concluidoDesde");
+    return pagina(
+      base.projetos
+        .filter((p) => !q.get("empresaId") || p.empresa.id === q.get("empresaId"))
+        .filter((p) => status.length === 0 || status.includes(p.status))
+        .filter((p) => !prazoAte || (!!p.prazoPrevisto && p.prazoPrevisto <= prazoAte))
+        .filter((p) => !concluidoDesde || (!!p.concluidoEm && p.concluidoEm >= concluidoDesde))
+        .filter((p) => !busca || p.nome.toLowerCase().includes(busca)),
+    );
+  }),
+  http.get(`${API}/projetos/:id`, ({ params }) => {
     const p = base.projetos.find((x) => x.id === params.id);
     return p ? HttpResponse.json(p) : naoEncontrado();
   }),
-  http.post("/api/projetos", async ({ request }) => {
-    const d = (await request.json()) as NovoProjeto;
-    const e = base.empresas.find((x) => x.id === d.empresaId);
-    if (!e) return HttpResponse.json({ mensagem: "Empresa inválida" }, { status: 422 });
-    const p: Projeto = {
-      id: `p${Date.now()}`,
-      versao: 1,
-      nome: d.nome,
-      descricao: d.descricao,
-      empresa: { id: e.id, nome: e.nome, logoUrl: e.logoUrl },
-      responsavel: ator(d.responsavelId),
-      prioridade: d.prioridade ?? "media",
-      status: "nao_iniciado",
-      fase: "descoberta",
-      progresso: 0,
-      prazoPrevisto: d.prazoPrevisto,
-      documentos: [],
+  http.post(`${API}/projetos`, async ({ request }) => {
+    const { responsavelId, empresaId, ...d } = (await request.json()) as NovoProjeto;
+    const e = base.empresas.find((x) => x.id === empresaId);
+    if (!e) return problema(400, "validacao", "Empresa inválida");
+    const p = novoProjeto({
+      ...d,
+      id: id("p"),
+      empresa: resumoEmpresa(e),
+      responsavel: ator(responsavelId),
+      criadoEm: agora(),
       atualizadoEm: agora(),
-    };
+    });
     base.projetos.push(p);
     return HttpResponse.json(p, { status: 201 });
   }),
-  http.patch("/api/projetos/:id", async ({ params, request }) => {
+  http.patch(`${API}/projetos/:id`, async ({ params, request }) => {
     const i = base.projetos.findIndex((x) => x.id === params.id);
     if (i < 0) return naoEncontrado();
     const atual = base.projetos[i]!;
     const { versao, responsavelId, ...resto } = (await request.json()) as AtualizacaoProjeto;
     if (versao !== atual.versao) return conflito();
+    const status = resto.status ?? atual.status;
     const novo: Projeto = {
       ...mesclar(atual, resto),
       responsavel: responsavelId === undefined ? atual.responsavel : ator(responsavelId),
-      concluidoEm:
-        resto.status === "concluido" && atual.status !== "concluido" ? agora() : atual.concluidoEm,
+      concluidoEm: status !== "concluido" ? null : (atual.concluidoEm ?? agora()),
       versao: atual.versao + 1,
       atualizadoEm: agora(),
     };
     base.projetos[i] = novo;
     return HttpResponse.json(novo);
   }),
-  http.get("/api/projetos/:id/atualizacoes", ({ params }) => {
-    const itens = base.notas[params.id as string] ?? [];
-    return HttpResponse.json({ itens, total: itens.length });
-  }),
-  http.post("/api/projetos/:id/atualizacoes", async ({ params, request }) => {
+  http.get(`${API}/projetos/:id/atualizacoes`, ({ params }) =>
+    pagina(base.notas[params.id as string] ?? []),
+  ),
+  http.post(`${API}/projetos/:id/atualizacoes`, async ({ params, request }) => {
     const p = base.projetos.find((x) => x.id === params.id);
     if (!p) return naoEncontrado();
     const { texto } = (await request.json()) as { texto: string };
-    const nota = { id: `n${Date.now()}`, texto, autor: sessao ?? atores[0]!, em: agora() };
+    const nota = { id: id("n"), texto, autor: ator(sessao?.usuario.atorId), em: agora() };
     (base.notas[p.id] ??= []).unshift(nota);
     p.ultimaAtualizacao = nota;
-    p.atualizadoEm = nota.em;
-    p.versao += 1;
     return HttpResponse.json(nota, { status: 201 });
+  }),
+
+  http.get(`${API}/documentos`, ({ request }) => {
+    const q = new URL(request.url).searchParams;
+    const busca = q.get("busca")?.toLowerCase();
+    return pagina(
+      base.documentos
+        .filter((d) => !q.get("projetoId") || d.projetoId === q.get("projetoId"))
+        .filter((d) => !q.get("empresaId") || d.empresa.id === q.get("empresaId"))
+        .filter((d) => !q.get("tipo") || d.tipo === q.get("tipo"))
+        .filter((d) => !busca || d.nome.toLowerCase().includes(busca)),
+    );
+  }),
+  http.post(`${API}/documentos`, async ({ request }) => {
+    const d = (await request.json()) as DocumentoEntrada;
+    const p = base.projetos.find((x) => x.id === d.projetoId);
+    if (!p) return problema(400, "validacao", "Projeto inválido");
+    const doc: Documento = {
+      ...d,
+      id: id("d"),
+      observacao: d.observacao ?? null,
+      projeto: { id: p.id, nome: p.nome },
+      empresa: p.empresa,
+      autor: ator(sessao?.usuario.atorId),
+      criadoEm: agora(),
+      atualizadoEm: agora(),
+      versao: 1,
+    };
+    base.documentos.unshift(doc);
+    return HttpResponse.json(doc, { status: 201 });
+  }),
+  http.patch(`${API}/documentos/:id`, async ({ params, request }) => {
+    const i = base.documentos.findIndex((x) => x.id === params.id);
+    if (i < 0) return naoEncontrado();
+    const atual = base.documentos[i]!;
+    const { versao, ...resto } = (await request.json()) as DocumentoAtualizacao;
+    if (versao !== atual.versao) return conflito();
+    const novo = { ...mesclar(atual, resto), versao: atual.versao + 1, atualizadoEm: agora() };
+    base.documentos[i] = novo;
+    return HttpResponse.json(novo);
+  }),
+  http.delete(`${API}/documentos/:id`, ({ params }) => {
+    base.documentos = base.documentos.filter((x) => x.id !== params.id);
+    return new HttpResponse(null, { status: 204 });
   }),
 ];

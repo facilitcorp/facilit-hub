@@ -1,15 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ErroApi, pedir } from "./cliente";
-import type { Sessao } from "./tipos";
+import { api, dados, ErroApi } from "./cliente";
+import type { Permissao } from "./tipos";
 
-const chave = ["sessao"] as const;
+export const chaveSessao = ["sessao"] as const;
 
-export function useSessao() {
+export function useObterSessao() {
   return useQuery({
-    queryKey: chave,
+    queryKey: chaveSessao,
     queryFn: async () => {
       try {
-        return await pedir<Sessao>("GET", "/sessao");
+        return await dados(api.GET("/sessao"));
       } catch (e) {
         if (e instanceof ErroApi && e.naoAutenticado) return null;
         throw e;
@@ -19,22 +19,26 @@ export function useSessao() {
   });
 }
 
+/** Só orienta a interface (esconder ações); quem nega é o back. */
+export function usePode(permissao: Permissao) {
+  return useObterSessao().data?.permissoes.includes(permissao) ?? false;
+}
+
 export function useEntrar() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dados: { email: string; senha: string }) =>
-      pedir<Sessao>("POST", "/sessao", { corpo: dados }),
-    onSuccess: (s) => qc.setQueryData(chave, s),
+    mutationFn: (body: { email: string; senha: string }) => dados(api.POST("/sessao", { body })),
+    onSuccess: (s) => qc.setQueryData(chaveSessao, s),
   });
 }
 
 export function useSair() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => pedir<void>("DELETE", "/sessao"),
+    mutationFn: () => dados(api.DELETE("/sessao")),
     onSettled: () => {
       qc.clear();
-      qc.setQueryData(chave, null);
+      qc.setQueryData(chaveSessao, null);
     },
   });
 }

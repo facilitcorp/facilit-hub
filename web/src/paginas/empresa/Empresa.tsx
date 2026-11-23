@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useObterEmpresa } from "@/api/empresas";
 import { useListarProjetos } from "@/api/projetos";
+import { usePode } from "@/api/sessao";
 import type { Empresa as TEmpresa, LinkCanal } from "@/api/tipos";
 import { SeloStatusEmpresa } from "@/componentes/empresas";
 import { NovoProjeto } from "@/componentes/NovoProjeto";
@@ -13,6 +14,7 @@ import { categoriasFerramenta, statusFerramenta, tiposLink } from "@/dominio/rot
 import { Avatar, Botao, Carregando, Falha, Logo, Secao, Selo, Vazio } from "@/ui";
 import { Modal } from "@/ui/Modal";
 import {
+  EnvioImagens,
   FormDados,
   FormFerramentas,
   FormIdentificacao,
@@ -33,6 +35,8 @@ const titulos: Record<Exclude<Edicao, null>, string> = {
 };
 
 function BotaoEditar({ aoClicar, rotulo = "Editar" }: { aoClicar: () => void; rotulo?: string }) {
+  const pode = usePode("empresas.editar");
+  if (!pode) return null;
   return (
     <Botao variante="fantasma" pequeno onClick={aoClicar}>
       <Pencil className="size-3.5" /> {rotulo}
@@ -51,9 +55,9 @@ function Dado({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   );
 }
 
-const fmtCnpj = (c?: string) =>
+const fmtCnpj = (c?: string | null) =>
   c?.length === 14 ? c.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5") : c;
-const fmtCep = (c?: string) => (c?.length === 8 ? `${c.slice(0, 5)}-${c.slice(5)}` : c);
+const fmtCep = (c?: string | null) => (c?.length === 8 ? `${c.slice(0, 5)}-${c.slice(5)}` : c);
 const linkWhats = (n: string) => `https://wa.me/${n.replace(/\D/g, "")}`;
 
 function enderecoEmLinhas(e: TEmpresa["endereco"]) {
@@ -98,6 +102,7 @@ export function Empresa() {
   const consulta = useObterEmpresa(id);
   const projetos = useListarProjetos({ empresaId: id });
   const [edicao, setEdicao] = useState<Edicao>(null);
+  const podeCriarProjeto = usePode("projetos.criar");
   const fechar = () => setEdicao(null);
 
   if (consulta.isPending) return <Carregando />;
@@ -137,7 +142,11 @@ export function Empresa() {
             </div>
             {e.slogan && <p className="text-sm text-slate-500 italic">{e.slogan}</p>}
             <p className="mt-1 text-xs text-slate-500">
-              {[e.segmento, `${e.totalProjetos} projetos`, `${e.projetosEmAndamento} em andamento`]
+              {[
+                e.segmento,
+                `${e.totalProjetos} projetos`,
+                `${e.totalProjetosEmAndamento} em andamento`,
+              ]
                 .filter(Boolean)
                 .join(" · ")}
             </p>
@@ -149,12 +158,10 @@ export function Empresa() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <Secao titulo="Sobre a empresa">
-            {e.descricaoCurta || e.descricaoCompleta ? (
+            {e.descricaoCurta || e.descricao ? (
               <div className="space-y-2 text-sm">
                 {e.descricaoCurta && <p className="font-medium">{e.descricaoCurta}</p>}
-                {e.descricaoCompleta && (
-                  <p className="whitespace-pre-line text-slate-600">{e.descricaoCompleta}</p>
-                )}
+                {e.descricao && <p className="whitespace-pre-line text-slate-600">{e.descricao}</p>}
               </div>
             ) : (
               <Vazio>Conte o que a empresa faz em “Editar”, no topo.</Vazio>
@@ -168,9 +175,11 @@ export function Empresa() {
           <Secao
             titulo="Projetos"
             acao={
-              <Botao pequeno onClick={() => setEdicao("projeto")}>
-                <Plus className="size-3.5" /> Novo projeto
-              </Botao>
+              podeCriarProjeto && (
+                <Botao pequeno onClick={() => setEdicao("projeto")}>
+                  <Plus className="size-3.5" /> Novo projeto
+                </Botao>
+              )
             }
           >
             {projetos.isPending ? (
@@ -208,9 +217,9 @@ export function Empresa() {
                     <Selo tom={statusFerramenta[f.status].tom}>
                       {statusFerramenta[f.status].rotulo}
                     </Selo>
-                    {urlSegura(f.link) && (
+                    {urlSegura(f.url) && (
                       <a
-                        href={urlSegura(f.link)}
+                        href={urlSegura(f.url)}
                         target="_blank"
                         rel="noreferrer noopener"
                         aria-label={`Abrir ${f.nome}`}
@@ -315,7 +324,12 @@ export function Empresa() {
         aoFechar={fechar}
         largo={edicao !== "projeto"}
       >
-        {edicao === "identificacao" && <FormIdentificacao empresa={e} aoConcluir={fechar} />}
+        {edicao === "identificacao" && (
+          <>
+            <EnvioImagens empresa={e} />
+            <FormIdentificacao empresa={e} aoConcluir={fechar} />
+          </>
+        )}
         {edicao === "dados" && <FormDados empresa={e} aoConcluir={fechar} />}
         {edicao === "links" && <FormLinks empresa={e} aoConcluir={fechar} />}
         {edicao === "ferramentas" && <FormFerramentas empresa={e} aoConcluir={fechar} />}

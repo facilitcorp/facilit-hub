@@ -1,7 +1,7 @@
 import { Building2, FileText, FolderKanban, LogOut, Sun } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation } from "react-router";
 import { clsx } from "clsx";
-import { useSair, useSessao } from "@/api/sessao";
+import { useObterSessao, useSair } from "@/api/sessao";
 import { Avatar, Carregando, Falha } from "@/ui";
 
 const menu = [
@@ -12,7 +12,7 @@ const menu = [
 ];
 
 export function Estrutura() {
-  const sessao = useSessao();
+  const sessao = useObterSessao();
   const sair = useSair();
   const local = useLocation();
 
@@ -49,8 +49,8 @@ export function Estrutura() {
           ))}
         </nav>
         <div className="hidden items-center gap-2 border-t border-slate-200 px-5 py-3 md:absolute md:inset-x-0 md:bottom-0 md:flex">
-          <Avatar nome={sessao.data.ator.nome} />
-          <span className="flex-1 truncate text-sm">{sessao.data.ator.nome}</span>
+          <Avatar nome={sessao.data.usuario.nome} />
+          <span className="flex-1 truncate text-sm">{sessao.data.usuario.nome}</span>
           <button
             onClick={() => sair.mutate()}
             aria-label="Sair"

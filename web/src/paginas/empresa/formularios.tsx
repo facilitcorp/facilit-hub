@@ -2,15 +2,22 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
-import { useAtualizarEmpresa, useListarAtores } from "@/api/empresas";
+import { useState } from "react";
+import type { Imagem } from "@/api/empresas";
+import {
+  useAtualizarEmpresa,
+  useEnviarImagemEmpresa,
+  useListarAtores,
+  useRemoverImagemEmpresa,
+} from "@/api/empresas";
 import type { AtualizacaoEmpresa, Empresa } from "@/api/tipos";
 import {
   digitosOpc,
   emailOpc,
-  semNulos,
   telefoneOpc,
   textoOpc,
   urlObrig,
+  ufOpc,
   urlOpc,
   v,
 } from "@/dominio/formulario";
@@ -70,9 +77,7 @@ const esquemaIdentificacao = z.object({
   status: z.enum(["em_estruturacao", "ativa", "pausada", "inativa"]),
   slogan: textoOpc(160),
   descricaoCurta: textoOpc(200),
-  descricaoCompleta: textoOpc(5000),
-  logoUrl: urlOpc,
-  capaUrl: urlOpc,
+  descricao: textoOpc(8000),
 });
 
 export function FormIdentificacao(props: Props) {
@@ -88,9 +93,7 @@ export function FormIdentificacao(props: Props) {
       status: e.status,
       slogan: v(e.slogan),
       descricaoCurta: v(e.descricaoCurta),
-      descricaoCompleta: v(e.descricaoCompleta),
-      logoUrl: v(e.logoUrl),
-      capaUrl: v(e.capaUrl),
+      descricao: v(e.descricao),
     },
   });
   const err = form.formState.errors;
@@ -123,18 +126,8 @@ export function FormIdentificacao(props: Props) {
       <Campo rotulo="Descrição curta" erro={err.descricaoCurta?.message} className="sm:col-span-2">
         <Entrada {...form.register("descricaoCurta")} />
       </Campo>
-      <Campo
-        rotulo="Descrição completa"
-        erro={err.descricaoCompleta?.message}
-        className="sm:col-span-2"
-      >
-        <AreaTexto rows={5} {...form.register("descricaoCompleta")} />
-      </Campo>
-      <Campo rotulo="Endereço da logo (URL)" erro={err.logoUrl?.message}>
-        <Entrada placeholder="https://" {...form.register("logoUrl")} />
-      </Campo>
-      <Campo rotulo="Endereço da capa (URL)" erro={err.capaUrl?.message}>
-        <Entrada placeholder="https://" {...form.register("capaUrl")} />
+      <Campo rotulo="Descrição completa" erro={err.descricao?.message} className="sm:col-span-2">
+        <AreaTexto rows={5} {...form.register("descricao")} />
       </Campo>
       <div className="sm:col-span-2">
         <Rodape pendente={pendente} erro={erro} aoCancelar={props.aoConcluir} />
@@ -154,7 +147,7 @@ const esquemaDados = z.object({
     complemento: textoOpc(100),
     bairro: textoOpc(100),
     cidade: textoOpc(100),
-    uf: textoOpc(2),
+    uf: ufOpc,
     cep: digitosOpc(8, "O CEP tem 8 dígitos"),
   }),
   observacoes: textoOpc(5000),
@@ -174,7 +167,7 @@ const esquemaDados = z.object({
 export function FormDados(props: Props) {
   const { empresa: e } = props;
   const { salvar, pendente, erro } = useSalvar(props);
-  const end = e.endereco ?? {};
+  const end = e.endereco;
   const form = useForm({
     resolver: zodResolver(esquemaDados),
     defaultValues: {
@@ -183,13 +176,13 @@ export function FormDados(props: Props) {
       whatsapp: v(e.whatsapp),
       email: v(e.email),
       endereco: {
-        logradouro: v(end.logradouro),
-        numero: v(end.numero),
-        complemento: v(end.complemento),
-        bairro: v(end.bairro),
-        cidade: v(end.cidade),
-        uf: v(end.uf),
-        cep: v(end.cep),
+        logradouro: v(end?.logradouro),
+        numero: v(end?.numero),
+        complemento: v(end?.complemento),
+        bairro: v(end?.bairro),
+        cidade: v(end?.cidade),
+        uf: v(end?.uf),
+        cep: v(end?.cep),
       },
       observacoes: v(e.observacoes),
       contatos: e.contatos.map((c) => ({
@@ -208,8 +201,7 @@ export function FormDados(props: Props) {
       onSubmit={form.handleSubmit((d) =>
         salvar({
           ...d,
-          endereco: { ...semNulos(d.endereco), pais: end.pais ?? "BR" },
-          contatos: d.contatos.map(semNulos),
+          endereco: { ...d.endereco, pais: end?.pais ?? "BR" },
         }),
       )}
       className="space-y-5"
@@ -379,7 +371,7 @@ const esquemaFerramentas = z.object({
         categoria: z.enum(Object.keys(categoriasFerramenta) as [keyof typeof categoriasFerramenta]),
         status: z.enum(Object.keys(statusFerramenta) as [keyof typeof statusFerramenta]),
         descricao: textoOpc(300),
-        link: urlOpc,
+        url: urlOpc,
         observacao: textoOpc(500),
       }),
     )
@@ -394,7 +386,7 @@ export function FormFerramentas(props: Props) {
       ferramentas: props.empresa.ferramentas.map((f) => ({
         ...f,
         descricao: v(f.descricao),
-        link: v(f.link),
+        url: v(f.url),
         observacao: v(f.observacao),
       })),
     },
@@ -402,10 +394,7 @@ export function FormFerramentas(props: Props) {
   const itens = useFieldArray({ control: form.control, name: "ferramentas" });
   const err = form.formState.errors.ferramentas;
   return (
-    <form
-      onSubmit={form.handleSubmit((d) => salvar({ ferramentas: d.ferramentas.map(semNulos) }))}
-      className="space-y-3"
-    >
+    <form onSubmit={form.handleSubmit((d) => salvar(d))} className="space-y-3">
       <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
         Registre só o que a empresa usa e onde acessar. Nunca anote senhas ou credenciais aqui.
       </p>
@@ -438,8 +427,8 @@ export function FormFerramentas(props: Props) {
           <Campo rotulo="Descrição">
             <Entrada {...form.register(`ferramentas.${i}.descricao`)} />
           </Campo>
-          <Campo rotulo="Link de acesso" erro={err?.[i]?.link?.message}>
-            <Entrada placeholder="https://" {...form.register(`ferramentas.${i}.link`)} />
+          <Campo rotulo="Link de acesso" erro={err?.[i]?.url?.message}>
+            <Entrada placeholder="https://" {...form.register(`ferramentas.${i}.url`)} />
           </Campo>
           <Campo rotulo="Observação">
             <Entrada {...form.register(`ferramentas.${i}.observacao`)} />
@@ -460,7 +449,7 @@ export function FormFerramentas(props: Props) {
             categoria: "outro",
             status: "em_uso",
             descricao: "",
-            link: "",
+            url: "",
             observacao: "",
           })
         }
@@ -477,7 +466,7 @@ const esquemaResponsaveis = z.object({
     .array(
       z.object({
         atorId: z.string().min(1, "Escolha a pessoa"),
-        papel: z.string().trim().min(1, "Informe a função").max(60),
+        papel: textoOpc(80),
       }),
     )
     .max(20, "Máximo de 20 responsáveis"),
@@ -489,7 +478,10 @@ export function FormResponsaveis(props: Props) {
   const form = useForm({
     resolver: zodResolver(esquemaResponsaveis),
     defaultValues: {
-      responsaveis: props.empresa.responsaveis.map((r) => ({ atorId: r.ator.id, papel: r.papel })),
+      responsaveis: props.empresa.responsaveis.map((r) => ({
+        atorId: r.ator.id,
+        papel: v(r.papel),
+      })),
     },
   });
   const itens = useFieldArray({ control: form.control, name: "responsaveis" });
@@ -539,5 +531,71 @@ export function FormResponsaveis(props: Props) {
       )}
       <Rodape pendente={pendente} erro={erro} aoCancelar={props.aoConcluir} />
     </form>
+  );
+}
+
+const LIMITES: Record<Imagem, { rotulo: string; mb: number }> = {
+  logo: { rotulo: "Logo", mb: 2 },
+  capa: { rotulo: "Capa", mb: 5 },
+};
+const TIPOS_IMAGEM = ["image/png", "image/jpeg", "image/webp"];
+
+/** Logo e capa: PNG, JPEG ou WebP (SVG não), logo até 2 MB e capa até 5 MB (contrato). */
+export function EnvioImagens({ empresa }: { empresa: Empresa }) {
+  const enviar = useEnviarImagemEmpresa(empresa.id);
+  const remover = useRemoverImagemEmpresa(empresa.id);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  const escolher = (imagem: Imagem, arquivo?: File) => {
+    if (!arquivo) return;
+    const lim = LIMITES[imagem];
+    if (!TIPOS_IMAGEM.includes(arquivo.type)) return setAviso("Use PNG, JPEG ou WebP.");
+    if (arquivo.size > lim.mb * 1024 * 1024)
+      return setAviso(`${lim.rotulo} deve ter até ${lim.mb} MB.`);
+    setAviso(null);
+    enviar.mutate({ imagem, arquivo });
+  };
+
+  return (
+    <div className="mb-5 space-y-2 border-b border-slate-200 pb-5">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {(Object.keys(LIMITES) as Imagem[]).map((imagem) => {
+          const atual = imagem === "logo" ? empresa.logoUrl : empresa.capaUrl;
+          return (
+            <div key={imagem} className="flex items-center gap-2">
+              <label className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium ring-1 ring-slate-300 ring-inset hover:bg-slate-50">
+                {atual
+                  ? `Trocar ${LIMITES[imagem].rotulo.toLowerCase()}`
+                  : `Enviar ${LIMITES[imagem].rotulo.toLowerCase()}`}
+                <input
+                  type="file"
+                  accept={TIPOS_IMAGEM.join(",")}
+                  className="sr-only"
+                  aria-label={`Arquivo da ${LIMITES[imagem].rotulo.toLowerCase()}`}
+                  disabled={enviar.isPending}
+                  onChange={(ev) => {
+                    escolher(imagem, ev.target.files?.[0]);
+                    ev.target.value = "";
+                  }}
+                />
+              </label>
+              {atual && (
+                <Botao
+                  variante="perigo"
+                  pequeno
+                  disabled={remover.isPending}
+                  onClick={() => remover.mutate(imagem)}
+                >
+                  Remover
+                </Botao>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-slate-500">PNG, JPEG ou WebP. Logo até 2 MB, capa até 5 MB.</p>
+      {aviso && <p className="text-xs text-red-600">{aviso}</p>}
+      <MensagemErro erro={enviar.error ?? remover.error} />
+    </div>
   );
 }

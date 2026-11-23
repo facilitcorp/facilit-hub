@@ -1,6 +1,6 @@
 const DIA = 86_400_000;
 
-export function dataCurta(iso?: string) {
+export function dataCurta(iso?: string | null) {
   if (!iso) return "—";
   const d = iso.length === 10 ? new Date(`${iso}T12:00:00`) : new Date(iso);
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
@@ -31,10 +31,10 @@ export function diasAte(data: string, agora = Date.now()) {
 }
 
 export const DIAS_NOTA_VELHA = 7;
-export const DIAS_PRAZO_PROXIMO = 14;
-export const DIAS_CONCLUIDO_RECENTE = 30;
+/** Mesmo padrão do back (`Painel.janelaPrazoDias`); a Home usa o valor que vem do back. */
+export const DIAS_PRAZO_PROXIMO = 7;
 
-export function notaVelha(iso: string | undefined, agora = Date.now()) {
+export function notaVelha(iso: string | null | undefined, agora = Date.now()) {
   return !iso || agora - new Date(iso).getTime() > DIAS_NOTA_VELHA * DIA;
 }
 
@@ -48,12 +48,22 @@ export function iniciais(nome: string) {
 }
 
 /** Só deixa passar http(s); evita javascript: e afins vindos de dado salvo. */
-export function urlSegura(u?: string) {
-  return u && /^https?:\/\//i.test(u) ? u : undefined;
+export function urlSegura(u?: string | null) {
+  return u && /^(https?:\/\/|blob:)/i.test(u) ? u : undefined;
 }
 
 /** +5511999990000 → +55 11 99999-0000 (outros países ficam como vieram). */
 export function telefone(e164: string) {
   const m = /^\+55(\d{2})(\d{4,5})(\d{4})$/.exec(e164);
   return m ? `+55 ${m[1]} ${m[2]}-${m[3]}` : e164;
+}
+
+/** Data local (AAAA-MM-DD) daqui a `dias` dias. */
+export function dataDaqui(dias: number, agora = Date.now()) {
+  const d = new Date(agora + dias * DIA);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function instanteAtras(dias: number, agora = Date.now()) {
+  return new Date(agora - dias * DIA).toISOString();
 }

@@ -1,7 +1,8 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import type { RouteObject } from "react-router";
 import { Link } from "react-router";
 import { ErroApi } from "@/api/cliente";
+import { chaveSessao } from "@/api/sessao";
 import { Estrutura } from "@/layout/Estrutura";
 import { Documentos } from "@/paginas/Documentos";
 import { Empresa } from "@/paginas/empresa/Empresa";
@@ -38,7 +39,13 @@ export const rotas: RouteObject[] = [
 ];
 
 export function criarClienteQuery() {
-  return new QueryClient({
+  // 401 em qualquer chamada = sessão expirou: zera a sessão e o layout leva ao login.
+  const aoErrar = (e: unknown) => {
+    if (e instanceof ErroApi && e.naoAutenticado) qc.setQueryData(chaveSessao, null);
+  };
+  const qc: QueryClient = new QueryClient({
+    queryCache: new QueryCache({ onError: aoErrar }),
+    mutationCache: new MutationCache({ onError: aoErrar }),
     defaultOptions: {
       queries: {
         staleTime: 30_000,
@@ -47,4 +54,5 @@ export function criarClienteQuery() {
       },
     },
   });
+  return qc;
 }

@@ -35,6 +35,7 @@ describe("Hoje na Facilitcorp", () => {
     expect(indicador("Empresas")).toBe("3");
     expect(indicador("Projetos ativos")).toBe("2");
     expect(indicador("Projetos bloqueados")).toBe("1");
+    expect(indicador("Prazo em até 7 dias")).toBe("2");
     expect(indicador("Concluídos (30 dias)")).toBe("1");
     expect(screen.getAllByText("Aurora Logística").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Novo site Aurora").length).toBeGreaterThan(0);
@@ -112,7 +113,7 @@ describe("ambiente da empresa", () => {
     renderizar("/empresas/e1");
     const u = userEvent.setup();
     await screen.findByRole("heading", { name: "Aurora Logística" });
-    servidor.use(http.patch("/api/empresas/:id", () => HttpResponse.json({}, { status: 409 })));
+    servidor.use(http.patch("*/api/empresas/:id", () => HttpResponse.json({}, { status: 409 })));
     await u.click(
       within(screen.getByText("Responsáveis").parentElement!).getByRole("button", {
         name: /Editar/,
@@ -162,9 +163,79 @@ describe("ambiente do projeto", () => {
 });
 
 describe("documentos", () => {
-  it("lista os links de todos os projetos", async () => {
+  it("lista os links de todos os projetos e filtra por tipo", async () => {
     renderizar("/documentos");
     expect(await screen.findByText("Repositório")).toBeInTheDocument();
     expect(screen.getByText("Homologação")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Filtrar por tipo"), "figma");
+    await waitFor(() => expect(screen.queryByText("Repositório")).not.toBeInTheDocument());
+    expect(screen.getByText("Layout")).toBeInTheDocument();
+  });
+
+  it("adiciona link no projeto e recusa URL com usuário e senha", async () => {
+    renderizar("/projetos/p5");
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole("button", { name: /Adicionar/ }));
+    const dialogo = screen.getByRole("dialog");
+    await u.type(within(dialogo).getByLabelText("Nome"), "Drive do projeto");
+    await u.selectOptions(within(dialogo).getByLabelText("Tipo"), "google_drive");
+    await u.type(within(dialogo).getByLabelText("URL"), "https://eu:segredo@drive.example/pasta");
+    await u.click(within(dialogo).getByRole("button", { name: "Salvar" }));
+    expect(await within(dialogo).findByText(/sem usuário ou senha/)).toBeInTheDocument();
+    const url = within(dialogo).getByPlaceholderText("https://");
+    await u.clear(url);
+    await u.type(url, "https://drive.example/pasta");
+    await u.click(within(dialogo).getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByText("Drive do projeto")).toBeInTheDocument();
+  });
+});
+
+describe("painel e permissões", () => {
+  it("card de bloqueados abre a lista filtrada", async () => {
+    const { router } = renderizar("/");
+    await userEvent.click(await screen.findByText("Projetos bloqueados"));
+    expect(await screen.findByRole("heading", { name: "Projetos" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe("?status=bloqueado");
+    await waitFor(() => expect(screen.queryByText("Novo site Aurora")).not.toBeInTheDocument());
+    expect(screen.getAllByText("Integração CRM").length).toBeGreaterThan(0);
+  });
+
+  it("esconde ações de edição sem permissão", async () => {
+    servidor.use(
+      http.get("*/api/sessao", () =>
+        HttpResponse.json({
+          usuario: {
+            id: "u9",
+            atorId: "a4",
+            nome: "Diego Rocha",
+            email: "d@exemplo.com",
+            papel: "membro",
+          },
+          organizacao: { id: "org-1", nome: "Grupo Exemplo" },
+          permissoes: ["empresas.ler", "projetos.ler"],
+          expiraEm: new Date(Date.now() + 3_600_000).toISOString(),
+        }),
+      ),
+    );
+    renderizar("/empresas/e1");
+    expect(await screen.findByRole("heading", { name: "Aurora Logística" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Editar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Novo projeto/ })).not.toBeInTheDocument();
+  });
+
+  it("sessão expirada em qualquer chamada leva ao login", async () => {
+    const { router } = renderizar("/empresas");
+    await screen.findByText("Vértice Digital");
+    servidor.use(
+      http.get("*/api/empresas/:id", () =>
+        HttpResponse.json(
+          { type: "x", title: "Sessão expirada", status: 401, codigo: "sessao_expirada" },
+          { status: 401 },
+        ),
+      ),
+    );
+    await userEvent.click(screen.getByText("Vértice Digital"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/entrar"));
   });
 });

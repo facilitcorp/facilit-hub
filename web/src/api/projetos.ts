@@ -1,89 +1,81 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { pedir } from "./cliente";
-import type {
-  AtualizacaoProjeto,
-  NotaAndamento,
-  NovoProjeto,
-  Pagina,
-  Projeto,
-  StatusProjeto,
-} from "./tipos";
-
-export interface FiltroProjetos {
-  empresaId?: string;
-  status?: StatusProjeto;
-  busca?: string;
-}
+import { api, dados, LIMITE } from "./cliente";
+import type { AtualizacaoProjeto, FiltroProjetos, NovoProjeto } from "./tipos";
 
 export const chavesProjeto = {
-  todas: ["projetos"] as const,
   lista: (f: FiltroProjetos) => ["projetos", "lista", f] as const,
   um: (id: string) => ["projetos", id] as const,
   atualizacoes: (id: string) => ["projetos", id, "atualizacoes"] as const,
 };
 
+function invalidarResumos(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ["projetos", "lista"] });
+  void qc.invalidateQueries({ queryKey: ["empresas"] });
+  void qc.invalidateQueries({ queryKey: ["painel"] });
+}
+
 export function useListarProjetos(filtro: FiltroProjetos = {}) {
   return useQuery({
     queryKey: chavesProjeto.lista(filtro),
     queryFn: () =>
-      pedir<Pagina<Projeto>>("GET", "/projetos", {
-        consulta: { ...filtro, limite: 200 },
-      }),
+      dados(api.GET("/projetos", { params: { query: { limite: LIMITE, ...filtro } } })),
     placeholderData: keepPreviousData,
   });
 }
 
-export function useObterProjeto(id: string) {
+export function useObterProjeto(projetoId: string) {
   return useQuery({
-    queryKey: chavesProjeto.um(id),
-    queryFn: () => pedir<Projeto>("GET", `/projetos/${id}`),
+    queryKey: chavesProjeto.um(projetoId),
+    queryFn: () => dados(api.GET("/projetos/{projetoId}", { params: { path: { projetoId } } })),
   });
-}
-
-function invalidarListas(qc: ReturnType<typeof useQueryClient>) {
-  void qc.invalidateQueries({ queryKey: ["projetos", "lista"] });
-  void qc.invalidateQueries({ queryKey: ["empresas"] });
 }
 
 export function useCriarProjeto() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dados: NovoProjeto) => pedir<Projeto>("POST", "/projetos", { corpo: dados }),
-    onSuccess: () => invalidarListas(qc),
+    mutationFn: (body: NovoProjeto) => dados(api.POST("/projetos", { body })),
+    onSuccess: () => invalidarResumos(qc),
   });
 }
 
-export function useAtualizarProjeto(id: string) {
+export function useAtualizarProjeto(projetoId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dados: AtualizacaoProjeto) =>
-      pedir<Projeto>("PATCH", `/projetos/${id}`, { corpo: dados }),
+    mutationFn: (body: AtualizacaoProjeto) =>
+      dados(api.PATCH("/projetos/{projetoId}", { params: { path: { projetoId } }, body })),
     onSuccess: (p) => {
-      qc.setQueryData(chavesProjeto.um(id), p);
-      invalidarListas(qc);
+      qc.setQueryData(chavesProjeto.um(projetoId), p);
+      invalidarResumos(qc);
     },
   });
 }
 
-export function useListarAtualizacoes(projetoId: string) {
+export function useListarAtualizacoesProjeto(projetoId: string) {
   return useQuery({
     queryKey: chavesProjeto.atualizacoes(projetoId),
     queryFn: () =>
-      pedir<Pagina<NotaAndamento>>("GET", `/projetos/${projetoId}/atualizacoes`, {
-        consulta: { limite: 100 },
-      }),
+      dados(
+        api.GET("/projetos/{projetoId}/atualizacoes", {
+          params: { path: { projetoId }, query: { limite: LIMITE } },
+        }),
+      ),
   });
 }
 
-export function useRegistrarAtualizacao(projetoId: string) {
+export function useRegistrarAtualizacaoProjeto(projetoId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (texto: string) =>
-      pedir<NotaAndamento>("POST", `/projetos/${projetoId}/atualizacoes`, { corpo: { texto } }),
+      dados(
+        api.POST("/projetos/{projetoId}/atualizacoes", {
+          params: { path: { projetoId } },
+          body: { texto },
+        }),
+      ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: chavesProjeto.um(projetoId) });
       void qc.invalidateQueries({ queryKey: chavesProjeto.atualizacoes(projetoId) });
-      invalidarListas(qc);
+      void qc.invalidateQueries({ queryKey: ["projetos", "lista"] });
     },
   });
 }

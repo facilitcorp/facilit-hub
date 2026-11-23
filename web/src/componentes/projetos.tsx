@@ -41,7 +41,7 @@ export function UltimaNota({ projeto, completa }: { projeto: Projeto; completa?:
     <div className="min-w-0">
       <p className={clsx("text-sm text-slate-700", !completa && "line-clamp-1")}>{n.texto}</p>
       <p className={clsx("text-xs", velha ? "font-medium text-amber-700" : "text-slate-500")}>
-        {n.autor.nome} · {haQuanto(n.em)}
+        {n.autor?.nome ?? "—"} · {haQuanto(n.em)}
       </p>
     </div>
   );

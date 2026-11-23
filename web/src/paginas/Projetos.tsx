@@ -1,31 +1,50 @@
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { useListarEmpresas } from "@/api/empresas";
 import { useListarProjetos } from "@/api/projetos";
+import { usePode } from "@/api/sessao";
 import type { StatusProjeto } from "@/api/tipos";
 import { NovoProjeto } from "@/componentes/NovoProjeto";
 import { TabelaProjetos } from "@/componentes/projetos";
+import { dataCurta } from "@/dominio/formato";
 import { opcoes, statusProjeto } from "@/dominio/rotulos";
 import { Botao, Carregando, Cartao, Entrada, Falha, Selecao } from "@/ui";
 import { Modal } from "@/ui/Modal";
 
 export function Projetos() {
   const [params, setParams] = useSearchParams();
+  const status = params.getAll("status") as StatusProjeto[];
+  const prazoAte = params.get("prazoAte") ?? undefined;
+  const concluidoDesde = params.get("concluidoDesde") ?? undefined;
   const filtro = {
     empresaId: params.get("empresaId") ?? undefined,
-    status: (params.get("status") as StatusProjeto | null) ?? undefined,
-    busca: params.get("busca") ?? undefined,
+    status: status.length ? status : undefined,
+    busca: params.get("busca") || undefined,
+    prazoAte,
+    concluidoDesde,
+    ordem: prazoAte ? ("prazoPrevisto" as const) : undefined,
   };
   const lista = useListarProjetos(filtro);
   const empresas = useListarEmpresas();
+  const podeCriar = usePode("projetos.criar");
   const [criando, setCriando] = useState(false);
 
   const filtrar = (k: string, v: string) =>
     setParams(
       (p) => {
+        p.delete(k);
         if (v) p.set(k, v);
-        else p.delete(k);
+        return p;
+      },
+      { replace: true },
+    );
+  const limparJanela = () =>
+    setParams(
+      (p) => {
+        p.delete("prazoAte");
+        p.delete("concluidoDesde");
+        p.delete("status");
         return p;
       },
       { replace: true },
@@ -35,11 +54,13 @@ export function Projetos() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Projetos</h1>
-        <Botao onClick={() => setCriando(true)}>
-          <Plus className="size-4" /> Novo projeto
-        </Botao>
+        {podeCriar && (
+          <Botao onClick={() => setCriando(true)}>
+            <Plus className="size-4" /> Novo projeto
+          </Botao>
+        )}
       </div>
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Entrada
           aria-label="Buscar projeto"
           placeholder="Buscar por nome"
@@ -60,19 +81,31 @@ export function Projetos() {
             </option>
           ))}
         </Selecao>
-        <Selecao
-          aria-label="Filtrar por status"
-          className="max-w-48"
-          value={filtro.status ?? ""}
-          onChange={(e) => filtrar("status", e.target.value)}
-        >
-          <option value="">Todos os status</option>
-          {opcoes(statusProjeto).map((o) => (
-            <option key={o.valor} value={o.valor}>
-              {o.rotulo}
-            </option>
-          ))}
-        </Selecao>
+        {status.length <= 1 && (
+          <Selecao
+            aria-label="Filtrar por status"
+            className="max-w-48"
+            value={status[0] ?? ""}
+            onChange={(e) => filtrar("status", e.target.value)}
+          >
+            <option value="">Todos os status</option>
+            {opcoes(statusProjeto).map((o) => (
+              <option key={o.valor} value={o.valor}>
+                {o.rotulo}
+              </option>
+            ))}
+          </Selecao>
+        )}
+        {(prazoAte || concluidoDesde || status.length > 1) && (
+          <Botao variante="secundario" pequeno onClick={limparJanela}>
+            {prazoAte
+              ? `Abertos com prazo até ${dataCurta(prazoAte)}`
+              : concluidoDesde
+                ? `Concluídos desde ${dataCurta(concluidoDesde)}`
+                : "Vários status"}
+            <X className="size-3.5" />
+          </Botao>
+        )}
       </div>
       <Cartao className="p-4">
         {lista.isPending ? (
@@ -80,7 +113,18 @@ export function Projetos() {
         ) : lista.isError ? (
           <Falha erro={lista.error} />
         ) : (
-          <TabelaProjetos projetos={lista.data.itens} comFase vazio="Nenhum projeto encontrado." />
+          <>
+            <TabelaProjetos
+              projetos={lista.data.itens}
+              comFase
+              vazio="Nenhum projeto encontrado."
+            />
+            {lista.data.proximoCursor && (
+              <p className="mt-3 text-xs text-slate-500">
+                Mostrando os primeiros {lista.data.itens.length}. Use os filtros para refinar.
+              </p>
+            )}
+          </>
         )}
       </Cartao>
       <Modal titulo="Novo projeto" aberto={criando} aoFechar={() => setCriando(false)}>

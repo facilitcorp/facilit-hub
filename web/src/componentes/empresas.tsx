@@ -27,7 +27,7 @@ export function CartaoEmpresa({ empresa }: { empresa: Empresa }) {
         <p className="mt-3 text-xs text-slate-500">
           {empresa.totalProjetos} {empresa.totalProjetos === 1 ? "projeto" : "projetos"} ·{" "}
           <span className="font-medium text-slate-700">
-            {empresa.projetosEmAndamento} em andamento
+            {empresa.totalProjetosEmAndamento} em andamento
           </span>
         </p>
       </Cartao>

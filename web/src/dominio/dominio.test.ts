@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Projeto } from "@/api/tipos";
 import { diasAte, haQuanto, notaVelha, urlSegura } from "./formato";
-import { resumoDoGrupo } from "./painel";
-import { telefoneOpc } from "./formulario";
+import { filtrosDoPainel, prazoProximo } from "./painel";
+import { telefoneOpc, urlObrig } from "./formulario";
 
 const agora = new Date("2026-11-23T12:00:00Z").getTime();
 const base = {
@@ -17,23 +17,22 @@ const base = {
 const p = (x: Partial<Projeto>) =>
   ({ ...base, id: "x", nome: "x", status: "em_andamento", ...x }) as Projeto;
 
-describe("resumoDoGrupo", () => {
-  it("conta ativos, bloqueados, prazo próximo e concluídos recentes", () => {
-    const r = resumoDoGrupo(
-      [
-        p({ status: "em_andamento", prazoPrevisto: "2026-11-30" }),
-        p({ status: "bloqueado", prazoPrevisto: "2027-03-01" }),
-        p({
-          status: "concluido",
-          prazoPrevisto: "2026-11-24",
-          concluidoEm: "2026-11-20T00:00:00Z",
-        }),
-        p({ status: "concluido", concluidoEm: "2026-09-01T00:00:00Z" }),
-        p({ status: "cancelado", prazoPrevisto: "2026-11-24" }),
-      ],
-      agora,
+describe("filtrosDoPainel", () => {
+  it("gera o filtro de listarProjetos equivalente a cada número", () => {
+    const f = filtrosDoPainel(7, 30, agora);
+    expect(f.ativos).toBe("/projetos?status=em_andamento");
+    expect(f.proximosDoPrazo).toBe(
+      "/projetos?status=nao_iniciado&status=em_andamento&status=bloqueado&status=pausado&prazoAte=2026-11-30",
     );
-    expect(r).toEqual({ ativos: 1, bloqueados: 1, proximosDoPrazo: 1, concluidosRecentes: 1 });
+    expect(f.concluidosRecentes).toBe(
+      `/projetos?status=concluido&concluidoDesde=${encodeURIComponent("2026-10-24T12:00:00.000Z")}`,
+    );
+  });
+  it("prazoProximo ignora projeto concluído", () => {
+    expect(prazoProximo(p({ prazoPrevisto: "2026-11-25" }), agora)).toBe(true);
+    expect(prazoProximo(p({ status: "concluido", prazoPrevisto: "2026-11-25" }), agora)).toBe(
+      false,
+    );
   });
 });
 
@@ -51,6 +50,10 @@ describe("formato", () => {
   it("urlSegura bloqueia javascript:", () => {
     expect(urlSegura("javascript:alert(1)")).toBeUndefined();
     expect(urlSegura("https://ok.example")).toBe("https://ok.example");
+  });
+  it("URL com usuário/senha embutidos é recusada (mesma regra do back)", () => {
+    expect(urlObrig.safeParse("https://user:senha@painel.example").success).toBe(false);
+    expect(urlObrig.safeParse("https://painel.example/login").success).toBe(true);
   });
   it("telefone vira E.164", () => {
     expect(telefoneOpc.parse("+55 (11) 99999-0000")).toBe("+5511999990000");

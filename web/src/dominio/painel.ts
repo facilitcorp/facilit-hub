@@ -1,28 +1,41 @@
-import type { Projeto } from "@/api/tipos";
-import { DIAS_CONCLUIDO_RECENTE, DIAS_PRAZO_PROXIMO, diasAte } from "./formato";
+import type { Projeto, StatusProjeto } from "@/api/tipos";
+import { DIAS_PRAZO_PROXIMO, dataDaqui, diasAte, instanteAtras } from "./formato";
 
-const ABERTOS = new Set(["nao_iniciado", "em_andamento", "bloqueado", "pausado"]);
+export const STATUS_ABERTOS: StatusProjeto[] = [
+  "nao_iniciado",
+  "em_andamento",
+  "bloqueado",
+  "pausado",
+];
 
-export function projetoAberto(p: Projeto) {
-  return ABERTOS.has(p.status);
+export function projetoAberto(p: Pick<Projeto, "status">) {
+  return STATUS_ABERTOS.includes(p.status);
 }
 
-export function prazoProximo(p: Projeto, agora = Date.now()) {
+export function prazoProximo(p: Pick<Projeto, "status" | "prazoPrevisto">, agora = Date.now()) {
   return (
     projetoAberto(p) && !!p.prazoPrevisto && diasAte(p.prazoPrevisto, agora) <= DIAS_PRAZO_PROXIMO
   );
 }
 
-export function resumoDoGrupo(projetos: Projeto[], agora = Date.now()) {
-  const limiteConcluido = agora - DIAS_CONCLUIDO_RECENTE * 86_400_000;
+/** Filtros de `listarProjetos` equivalentes a cada número do painel (ver contrato `obterPainel`). */
+export function filtrosDoPainel(
+  janelaPrazoDias: number,
+  janelaConcluidosDias: number,
+  agora = Date.now(),
+) {
+  const qs = (o: Record<string, string | string[]>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(o)) for (const x of [v].flat()) p.append(k, x);
+    return `/projetos?${p}`;
+  };
   return {
-    ativos: projetos.filter((p) => p.status === "em_andamento").length,
-    bloqueados: projetos.filter((p) => p.status === "bloqueado").length,
-    proximosDoPrazo: projetos.filter((p) => prazoProximo(p, agora)).length,
-    concluidosRecentes: projetos.filter(
-      (p) =>
-        p.status === "concluido" &&
-        new Date(p.concluidoEm ?? p.atualizadoEm).getTime() >= limiteConcluido,
-    ).length,
+    ativos: qs({ status: "em_andamento" }),
+    bloqueados: qs({ status: "bloqueado" }),
+    proximosDoPrazo: qs({ status: STATUS_ABERTOS, prazoAte: dataDaqui(janelaPrazoDias, agora) }),
+    concluidosRecentes: qs({
+      status: "concluido",
+      concluidoDesde: instanteAtras(janelaConcluidosDias, agora),
+    }),
   };
 }

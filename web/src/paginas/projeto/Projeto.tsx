@@ -1,16 +1,19 @@
 import { clsx } from "clsx";
-import { ArrowRight, ExternalLink, Pencil } from "lucide-react";
+import { ArrowRight, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { useListarAtualizacoes, useObterProjeto } from "@/api/projetos";
+import { useListarDocumentos, useRemoverDocumento } from "@/api/documentos";
+import { useListarAtualizacoesProjeto, useObterProjeto } from "@/api/projetos";
+import { usePode } from "@/api/sessao";
+import type { Documento } from "@/api/tipos";
 import { Prazo, Responsavel, SeloStatusProjeto } from "@/componentes/projetos";
 import { dataCurta, dataHora, haQuanto, notaVelha, urlSegura } from "@/dominio/formato";
 import { projetoAberto } from "@/dominio/painel";
-import { fasesProjeto, prioridades } from "@/dominio/rotulos";
+import { fasesProjeto, prioridades, tiposDocumento } from "@/dominio/rotulos";
 import { Avatar, Botao, Cartao, Carregando, Falha, Progresso, Secao, Selo, Vazio } from "@/ui";
 import { Modal } from "@/ui/Modal";
-import { FormAtualizacao, FormDocumentos, FormProjeto } from "./formularios";
+import { FormAtualizacao, FormDocumento, FormProjeto } from "./formularios";
 
 function TrilhaFases({ fase }: { fase: string }) {
   const atual = fasesProjeto.findIndex((f) => f.valor === fase);
@@ -45,8 +48,15 @@ function Dado({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 export function Projeto() {
   const { id = "" } = useParams();
   const consulta = useObterProjeto(id);
-  const notas = useListarAtualizacoes(id);
-  const [edicao, setEdicao] = useState<"projeto" | "documentos" | null>(null);
+  const notas = useListarAtualizacoesProjeto(id);
+  const docs = useListarDocumentos({ projetoId: id });
+  const remover = useRemoverDocumento();
+  const podeEditar = usePode("projetos.editar");
+  const podeAtualizar = usePode("projetos.atualizar");
+  const podeDocs = usePode("documentos.editar");
+  const [edicao, setEdicao] = useState<
+    { tipo: "projeto" } | { tipo: "documento"; documento?: Documento } | null
+  >(null);
   const fechar = () => setEdicao(null);
 
   if (consulta.isPending) return <Carregando />;
@@ -85,18 +95,19 @@ export function Projeto() {
               {p.empresa.nome}
             </Link>
           </div>
-          <Botao variante="secundario" pequeno onClick={() => setEdicao("projeto")}>
-            <Pencil className="size-3.5" /> Editar projeto
-          </Botao>
+          {podeEditar && (
+            <Botao variante="secundario" pequeno onClick={() => setEdicao({ tipo: "projeto" })}>
+              <Pencil className="size-3.5" /> Editar projeto
+            </Botao>
+          )}
         </div>
 
-        <div className={clsx("rounded-lg p-4", p.proximosPassos ? "bg-blue-50" : "bg-slate-50")}>
+        <div className={clsx("rounded-lg p-4", p.proximaAcao ? "bg-blue-50" : "bg-slate-50")}>
           <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-blue-800 uppercase">
             <ArrowRight className="size-3.5" /> Próxima ação
           </p>
-          <p className={clsx("mt-1", p.proximosPassos ? "font-medium" : "text-sm text-slate-500")}>
-            {p.proximosPassos ??
-              "Nenhuma próxima ação definida. Use “Editar projeto” para registrar."}
+          <p className={clsx("mt-1", p.proximaAcao ? "font-medium" : "text-sm text-slate-500")}>
+            {p.proximaAcao ?? "Nenhuma próxima ação definida. Use “Editar projeto” para registrar."}
           </p>
         </div>
 
@@ -118,7 +129,7 @@ export function Projeto() {
                   velha ? "font-medium text-amber-800" : "text-slate-500",
                 )}
               >
-                {ultima.autor.nome} · {haQuanto(ultima.em)}
+                {ultima.autor?.nome ?? "—"} · {haQuanto(ultima.em)}
                 {velha && " · projeto sem atualização recente"}
               </p>
             </>
@@ -146,7 +157,7 @@ export function Projeto() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <Secao titulo="Atualizações">
-            <FormAtualizacao projetoId={p.id} />
+            {podeAtualizar && <FormAtualizacao projetoId={p.id} />}
             <div className="mt-5">
               {notas.isPending ? (
                 <Carregando />
@@ -160,7 +171,8 @@ export function Projeto() {
                     <li key={n.id} className="relative">
                       <span className="absolute top-1.5 -left-[21px] size-2.5 rounded-full bg-slate-300 ring-4 ring-white" />
                       <p className="flex items-center gap-1.5 text-xs text-slate-500">
-                        <Avatar nome={n.autor.nome} /> {n.autor.nome} · {dataHora(n.em)}
+                        <Avatar nome={n.autor?.nome ?? "—"} /> {n.autor?.nome ?? "—"} ·{" "}
+                        {dataHora(n.em)}
                       </p>
                       <p className="mt-1 text-sm whitespace-pre-line">{n.texto}</p>
                     </li>
@@ -192,21 +204,27 @@ export function Projeto() {
           <Secao
             titulo="Documentos e links"
             acao={
-              <Botao variante="fantasma" pequeno onClick={() => setEdicao("documentos")}>
-                <Pencil className="size-3.5" /> Editar
-              </Botao>
+              podeDocs && (
+                <Botao variante="fantasma" pequeno onClick={() => setEdicao({ tipo: "documento" })}>
+                  <Plus className="size-3.5" /> Adicionar
+                </Botao>
+              )
             }
           >
-            {p.documentos.length === 0 ? (
+            {docs.isPending ? (
+              <Carregando />
+            ) : docs.isError ? (
+              <Falha erro={docs.error} />
+            ) : docs.data.itens.length === 0 ? (
               <Vazio>Nenhum link registrado.</Vazio>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {p.documentos.map((d, i) => (
-                  <li key={i} className="flex items-center gap-2 py-2">
+                {docs.data.itens.map((d) => (
+                  <li key={d.id} className="flex items-center gap-1 py-2">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{d.nome}</p>
                       <p className="truncate text-xs text-slate-500">
-                        {[d.tipo, d.observacao].filter(Boolean).join(" · ")}
+                        {[tiposDocumento[d.tipo], d.observacao].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                     {urlSegura(d.url) && (
@@ -220,6 +238,26 @@ export function Projeto() {
                         <ExternalLink className="size-4" />
                       </a>
                     )}
+                    {podeDocs && (
+                      <>
+                        <button
+                          aria-label={`Editar ${d.nome}`}
+                          onClick={() => setEdicao({ tipo: "documento", documento: d })}
+                          className="p-1 text-slate-500 hover:text-slate-800"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                        <button
+                          aria-label={`Remover ${d.nome}`}
+                          onClick={() => {
+                            if (window.confirm(`Remover "${d.nome}"?`)) remover.mutate(d.id);
+                          }}
+                          className="p-1 text-red-600"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -229,13 +267,21 @@ export function Projeto() {
       </div>
 
       <Modal
-        titulo={edicao === "documentos" ? "Documentos e links" : "Editar projeto"}
+        titulo={
+          edicao?.tipo === "projeto"
+            ? "Editar projeto"
+            : edicao?.documento
+              ? "Editar documento"
+              : "Novo documento ou link"
+        }
         aberto={edicao !== null}
         aoFechar={fechar}
-        largo
+        largo={edicao?.tipo === "projeto"}
       >
-        {edicao === "projeto" && <FormProjeto projeto={p} aoConcluir={fechar} />}
-        {edicao === "documentos" && <FormDocumentos projeto={p} aoConcluir={fechar} />}
+        {edicao?.tipo === "projeto" && <FormProjeto projeto={p} aoConcluir={fechar} />}
+        {edicao?.tipo === "documento" && (
+          <FormDocumento projetoId={p.id} documento={edicao.documento} aoConcluir={fechar} />
+        )}
       </Modal>
     </div>
   );

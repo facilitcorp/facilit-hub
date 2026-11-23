@@ -1,12 +1,18 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Trash2 } from "lucide-react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { useListarAtores } from "@/api/empresas";
-import { useAtualizarProjeto, useRegistrarAtualizacao } from "@/api/projetos";
-import type { Projeto } from "@/api/tipos";
-import { semNulos, textoOpc, urlObrig, v } from "@/dominio/formulario";
-import { fasesProjeto, opcoes, prioridades, statusProjeto } from "@/dominio/rotulos";
+import { useAtualizarDocumento, useCriarDocumento } from "@/api/documentos";
+import { useAtualizarProjeto, useRegistrarAtualizacaoProjeto } from "@/api/projetos";
+import type { Documento, Projeto, TipoDocumento } from "@/api/tipos";
+import { textoOpc, urlObrig, v } from "@/dominio/formulario";
+import {
+  fasesProjeto,
+  opcoes,
+  prioridades,
+  statusProjeto,
+  tiposDocumento,
+} from "@/dominio/rotulos";
 import { AreaTexto, Botao, Campo, Entrada, MensagemErro, Selecao } from "@/ui";
 
 interface Props {
@@ -35,7 +41,7 @@ const esquema = z
     progresso: z.coerce.number<string | number>().int().min(0).max(100),
     inicioPrevisto: dataOpc,
     prazoPrevisto: dataOpc,
-    proximosPassos: textoOpc(500),
+    proximaAcao: textoOpc(500),
   })
   .refine((d) => !d.inicioPrevisto || !d.prazoPrevisto || d.inicioPrevisto <= d.prazoPrevisto, {
     path: ["prazoPrevisto"],
@@ -58,7 +64,7 @@ export function FormProjeto({ projeto: p, aoConcluir }: Props) {
       progresso: p.progresso,
       inicioPrevisto: v(p.inicioPrevisto),
       prazoPrevisto: v(p.prazoPrevisto),
-      proximosPassos: v(p.proximosPassos),
+      proximaAcao: v(p.proximaAcao),
     },
   });
   const err = form.formState.errors;
@@ -73,10 +79,10 @@ export function FormProjeto({ projeto: p, aoConcluir }: Props) {
       <Campo rotulo="Nome" erro={err.nome?.message} className="sm:col-span-3">
         <Entrada {...form.register("nome")} />
       </Campo>
-      <Campo rotulo="Próxima ação" erro={err.proximosPassos?.message} className="sm:col-span-3">
+      <Campo rotulo="Próxima ação" erro={err.proximaAcao?.message} className="sm:col-span-3">
         <Entrada
           placeholder="Ex.: Finalizar integração do formulário."
-          {...form.register("proximosPassos")}
+          {...form.register("proximaAcao")}
         />
       </Campo>
       <Campo rotulo="Status">
@@ -157,80 +163,65 @@ export function FormProjeto({ projeto: p, aoConcluir }: Props) {
   );
 }
 
-const esquemaDocs = z.object({
-  documentos: z
-    .array(
-      z.object({
-        nome: z.string().trim().min(1, "Informe o nome").max(120),
-        tipo: z.string().trim().min(1, "Informe o tipo").max(60),
-        url: urlObrig,
-        observacao: textoOpc(300),
-      }),
-    )
-    .max(100),
+const esquemaDoc = z.object({
+  nome: z.string().trim().min(1, "Informe o nome").max(160),
+  tipo: z.enum(Object.keys(tiposDocumento) as [TipoDocumento]),
+  url: urlObrig,
+  observacao: textoOpc(1000),
 });
 
-export function FormDocumentos({ projeto: p, aoConcluir }: Props) {
-  const m = useAtualizarProjeto(p.id);
+/** Cria (sem `documento`) ou edita um documento/link do projeto. */
+export function FormDocumento({
+  projetoId,
+  documento,
+  aoConcluir,
+}: {
+  projetoId: string;
+  documento?: Documento;
+  aoConcluir: () => void;
+}) {
+  const criar = useCriarDocumento();
+  const atualizar = useAtualizarDocumento(documento?.id ?? "");
+  const m = documento ? atualizar : criar;
   const form = useForm({
-    resolver: zodResolver(esquemaDocs),
-    defaultValues: { documentos: p.documentos.map((d) => ({ ...d, observacao: v(d.observacao) })) },
+    resolver: zodResolver(esquemaDoc),
+    defaultValues: {
+      nome: documento?.nome ?? "",
+      tipo: documento?.tipo ?? "outro",
+      url: documento?.url ?? "",
+      observacao: v(documento?.observacao),
+    },
   });
-  const itens = useFieldArray({ control: form.control, name: "documentos" });
-  const err = form.formState.errors.documentos;
+  const err = form.formState.errors;
   return (
     <form
-      className="space-y-3"
+      className="space-y-4"
       onSubmit={form.handleSubmit((d) =>
-        m.mutate(
-          { documentos: d.documentos.map(semNulos), versao: p.versao },
-          { onSuccess: aoConcluir },
-        ),
+        documento
+          ? atualizar.mutate({ ...d, versao: documento.versao }, { onSuccess: aoConcluir })
+          : criar.mutate({ ...d, projetoId }, { onSuccess: aoConcluir }),
       )}
     >
-      <datalist id="tipos-doc">
-        {[
-          "GitHub",
-          "Figma",
-          "Google Drive",
-          "Site de homologação",
-          "Documentação",
-          "Apresentação",
-        ].map((t) => (
-          <option key={t} value={t} />
-        ))}
-      </datalist>
-      {itens.fields.map((f, i) => (
-        <div
-          key={f.id}
-          className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_10rem_2fr]"
-        >
-          <Campo rotulo="Nome" erro={err?.[i]?.nome?.message}>
-            <Entrada {...form.register(`documentos.${i}.nome`)} />
-          </Campo>
-          <Campo rotulo="Tipo" erro={err?.[i]?.tipo?.message}>
-            <Entrada list="tipos-doc" {...form.register(`documentos.${i}.tipo`)} />
-          </Campo>
-          <Campo rotulo="URL" erro={err?.[i]?.url?.message}>
-            <Entrada placeholder="https://" {...form.register(`documentos.${i}.url`)} />
-          </Campo>
-          <Campo rotulo="Observação" className="sm:col-span-2">
-            <Entrada {...form.register(`documentos.${i}.observacao`)} />
-          </Campo>
-          <div className="flex items-end justify-end">
-            <Botao variante="perigo" pequeno onClick={() => itens.remove(i)}>
-              <Trash2 className="size-3.5" /> Remover
-            </Botao>
-          </div>
-        </div>
-      ))}
-      <Botao
-        variante="secundario"
-        pequeno
-        onClick={() => itens.append({ nome: "", tipo: "", url: "", observacao: "" })}
-      >
-        <Plus className="size-3.5" /> Adicionar link
-      </Botao>
+      <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
+        <Campo rotulo="Nome" erro={err.nome?.message}>
+          <Entrada autoFocus {...form.register("nome")} />
+        </Campo>
+        <Campo rotulo="Tipo">
+          <Selecao {...form.register("tipo")}>
+            {opcoes(tiposDocumento).map((o) => (
+              <option key={o.valor} value={o.valor}>
+                {o.rotulo}
+              </option>
+            ))}
+          </Selecao>
+        </Campo>
+      </div>
+      <Campo rotulo="URL" erro={err.url?.message}>
+        <Entrada placeholder="https://" {...form.register("url")} />
+      </Campo>
+      <Campo rotulo="Observação" erro={err.observacao?.message}>
+        <Entrada {...form.register("observacao")} />
+      </Campo>
       <MensagemErro erro={m.error} />
       <div className="flex justify-end gap-2">
         <Botao variante="secundario" onClick={aoConcluir}>
@@ -249,7 +240,7 @@ const esquemaNota = z.object({
 });
 
 export function FormAtualizacao({ projetoId }: { projetoId: string }) {
-  const m = useRegistrarAtualizacao(projetoId);
+  const m = useRegistrarAtualizacaoProjeto(projetoId);
   const form = useForm({ resolver: zodResolver(esquemaNota), defaultValues: { texto: "" } });
   return (
     <form

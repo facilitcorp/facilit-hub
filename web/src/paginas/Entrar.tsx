@@ -2,7 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { z } from "zod";
-import { useEntrar, useSessao } from "@/api/sessao";
+import { useEntrar, useObterSessao } from "@/api/sessao";
 import { Botao, Campo, Cartao, Entrada, MensagemErro } from "@/ui";
 
 const esquema = z.object({
@@ -11,7 +11,7 @@ const esquema = z.object({
 });
 
 export function Entrar() {
-  const sessao = useSessao();
+  const sessao = useObterSessao();
   const entrar = useEntrar();
   const navegar = useNavigate();
   const de = (useLocation().state as { de?: string } | null)?.de ?? "/";

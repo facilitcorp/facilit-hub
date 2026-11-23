@@ -151,13 +151,13 @@ export function Logo({
   tamanho = "md",
 }: {
   nome: string;
-  url?: string;
+  url?: string | null;
   tamanho?: "sm" | "md" | "lg";
 }) {
   const t = { sm: "size-8 text-xs", md: "size-11 text-sm", lg: "size-20 text-xl" }[tamanho];
   return urlSegura(url) ? (
     <img
-      src={url}
+      src={urlSegura(url)}
       alt=""
       className={clsx(t, "shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200")}
     />
@@ -207,14 +207,23 @@ export function Falha({ erro }: { erro: unknown }) {
 
 export function MensagemErro({ erro }: { erro: unknown }) {
   if (!erro) return null;
-  const conflito = (erro as { conflito?: boolean }).conflito;
+  const e = erro as { conflito?: boolean; campos?: { campo: string; mensagem: string }[] };
   return (
-    <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-      {conflito
+    <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+      {e.conflito
         ? "Outra pessoa alterou este registro enquanto você editava. Recarregue para ver a versão atual."
         : erro instanceof Error
           ? erro.message
           : "Não foi possível salvar."}
-    </p>
+      {!!e.campos?.length && (
+        <ul className="mt-1 list-disc pl-5 text-xs">
+          {e.campos.map((c) => (
+            <li key={c.campo}>
+              {c.campo}: {c.mensagem}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

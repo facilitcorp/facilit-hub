@@ -1,13 +1,21 @@
-// Cliente HTTP mínimo. Quando os tipos gerados existirem, troca-se por openapi-fetch
-// sem mexer nos hooks (eles só dependem de `pedir`).
+import createClient from "openapi-fetch";
+import type { paths } from "./gerado/esquema";
+import type { Problema } from "./tipos";
+
+/** Front e API no mesmo domínio (contrato): `/api` relativo, cookie de sessão. */
+export const api = createClient<paths>({
+  baseUrl: `${typeof window === "undefined" ? "http://localhost" : window.location.origin}/api`,
+  credentials: "include",
+  // resolve o fetch na hora da chamada (permite interceptação nos testes)
+  fetch: (pedido) => globalThis.fetch(pedido),
+});
 
 export class ErroApi extends Error {
   constructor(
     readonly status: number,
-    message: string,
-    readonly corpo?: unknown,
+    readonly problema?: Partial<Problema>,
   ) {
-    super(message);
+    super(problema?.detail ?? problema?.title ?? `Erro ${status}`);
   }
   get conflito() {
     return this.status === 409;
@@ -15,33 +23,20 @@ export class ErroApi extends Error {
   get naoAutenticado() {
     return this.status === 401;
   }
+  /** Erros por campo (validação). */
+  get campos() {
+    return this.problema?.campos ?? [];
+  }
 }
 
-type Consulta = Record<string, string | number | undefined>;
-
-export async function pedir<T>(
-  metodo: "GET" | "POST" | "PATCH" | "DELETE",
-  caminho: string,
-  opcoes: { corpo?: unknown; consulta?: Consulta } = {},
+/** Devolve `data` ou lança ErroApi com o problem+json. */
+export async function dados<T>(
+  pedido: Promise<{ data?: T; error?: unknown; response: Response }>,
 ): Promise<T> {
-  const url = new URL(`/api${caminho}`, window.location.origin);
-  for (const [k, v] of Object.entries(opcoes.consulta ?? {})) {
-    if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
-  }
-  const resp = await fetch(url, {
-    method: metodo,
-    credentials: "include",
-    headers: opcoes.corpo === undefined ? undefined : { "Content-Type": "application/json" },
-    body: opcoes.corpo === undefined ? undefined : JSON.stringify(opcoes.corpo),
-  });
-  if (resp.status === 204) return undefined as T;
-  const corpo: unknown = await resp.json().catch(() => undefined);
-  if (!resp.ok) {
-    const msg =
-      (corpo as { mensagem?: string; title?: string } | undefined)?.mensagem ??
-      (corpo as { title?: string } | undefined)?.title ??
-      `Erro ${resp.status}`;
-    throw new ErroApi(resp.status, msg, corpo);
-  }
-  return corpo as T;
+  const { data, error, response } = await pedido;
+  if (!response.ok) throw new ErroApi(response.status, error as Partial<Problema> | undefined);
+  return data as T;
 }
+
+/** Limite máximo de página do contrato; listas do MVP cabem numa página. */
+export const LIMITE = 100;

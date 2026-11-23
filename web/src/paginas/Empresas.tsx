@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useSearchParams } from "react-router";
 import { z } from "zod";
+import { textoOpc } from "@/dominio/formulario";
 import { useCriarEmpresa, useListarEmpresas } from "@/api/empresas";
+import { usePode } from "@/api/sessao";
 import type { StatusEmpresa } from "@/api/tipos";
 import { CartaoEmpresa } from "@/componentes/empresas";
 import { opcoes, statusEmpresa } from "@/dominio/rotulos";
@@ -12,15 +14,18 @@ import { Botao, Campo, Carregando, Entrada, Falha, MensagemErro, Selecao, Vazio 
 import { Modal } from "@/ui/Modal";
 
 const esquema = z.object({
-  nome: z.string().trim().min(2, "Mínimo de 2 caracteres").max(120),
-  segmento: z.string().trim().max(80).optional(),
-  descricaoCurta: z.string().trim().max(200).optional(),
+  nome: z.string().trim().min(2, "Mínimo de 2 caracteres").max(160),
+  segmento: textoOpc(120),
+  descricaoCurta: textoOpc(280),
 });
 
 function NovaEmpresa({ aoFechar }: { aoFechar: () => void }) {
   const criar = useCriarEmpresa();
   const navegar = useNavigate();
-  const form = useForm({ resolver: zodResolver(esquema) });
+  const form = useForm({
+    resolver: zodResolver(esquema),
+    defaultValues: { nome: "", segmento: "", descricaoCurta: "" },
+  });
   return (
     <form
       className="space-y-4"
@@ -55,8 +60,12 @@ export function Empresas() {
   const [params, setParams] = useSearchParams();
   const status = (params.get("status") as StatusEmpresa | null) ?? undefined;
   const busca = params.get("busca") ?? "";
-  const lista = useListarEmpresas({ status, busca });
+  const lista = useListarEmpresas({
+    status: status ? [status] : undefined,
+    busca: busca || undefined,
+  });
   const [criando, setCriando] = useState(false);
+  const podeCriar = usePode("empresas.criar");
 
   const filtrar = (k: string, v: string) =>
     setParams(
@@ -72,9 +81,11 @@ export function Empresas() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Empresas</h1>
-        <Botao onClick={() => setCriando(true)}>
-          <Plus className="size-4" /> Nova empresa
-        </Botao>
+        {podeCriar && (
+          <Botao onClick={() => setCriando(true)}>
+            <Plus className="size-4" /> Nova empresa
+          </Botao>
+        )}
       </div>
       <div className="flex flex-wrap gap-3">
         <Entrada

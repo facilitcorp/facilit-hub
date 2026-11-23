@@ -5,6 +5,7 @@ import type {
   StatusEmpresa,
   StatusFerramenta,
   StatusProjeto,
+  TipoDocumento,
   TipoLink,
 } from "@/api/tipos";
 
@@ -57,7 +58,7 @@ export const categoriasFerramenta: Record<CategoriaFerramenta, string> = {
   crm: "CRM",
   financeiro: "Financeiro",
   rastreamento: "Plataforma de rastreamento",
-  codigo: "Código (GitHub etc.)",
+  desenvolvimento: "Desenvolvimento (GitHub etc.)",
   produtividade: "Produtividade (Google Workspace etc.)",
   marketing: "Marketing (Meta Business etc.)",
   sistema_interno: "Sistema interno",
@@ -69,8 +70,18 @@ export const categoriasFerramenta: Record<CategoriaFerramenta, string> = {
 
 export const statusFerramenta: Record<StatusFerramenta, { rotulo: string; tom: Tom }> = {
   em_uso: { rotulo: "Em uso", tom: "verde" },
-  em_avaliacao: { rotulo: "Em avaliação", tom: "azul" },
+  em_implantacao: { rotulo: "Em implantação", tom: "azul" },
   descontinuada: { rotulo: "Descontinuada", tom: "cinza" },
+};
+
+export const tiposDocumento: Record<TipoDocumento, string> = {
+  github: "GitHub",
+  figma: "Figma",
+  google_drive: "Google Drive",
+  homologacao: "Site de homologação",
+  documentacao: "Documentação",
+  apresentacao: "Apresentação",
+  outro: "Outro",
 };
 
 export function opcoes<K extends string>(mapa: Record<K, string | { rotulo: string }>) {

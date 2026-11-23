@@ -1,55 +1,77 @@
+import { Link } from "react-router";
 import { useListarEmpresas } from "@/api/empresas";
+import { useObterPainel } from "@/api/painel";
 import { useListarProjetos } from "@/api/projetos";
 import { CartaoEmpresa } from "@/componentes/empresas";
 import { TabelaProjetos } from "@/componentes/projetos";
-import { resumoDoGrupo } from "@/dominio/painel";
+import { filtrosDoPainel } from "@/dominio/painel";
 import { Cartao, Carregando, Falha, Secao, Vazio } from "@/ui";
 
 function Indicador({
   rotulo,
   valor,
+  para,
   destaque,
 }: {
   rotulo: string;
   valor: number;
+  para: string;
   destaque?: boolean;
 }) {
   return (
-    <Cartao className="p-4">
-      <p className="text-xs text-slate-500" data-indicador={rotulo}>
-        {rotulo}
-      </p>
-      <p
-        className={`mt-1 text-2xl font-semibold tabular-nums ${destaque && valor > 0 ? "text-red-600" : ""}`}
-      >
-        {valor}
-      </p>
-    </Cartao>
+    <Link to={para} className="group block">
+      <Cartao className="h-full p-4 transition group-hover:border-marca/40">
+        <p className="text-xs text-slate-500" data-indicador={rotulo}>
+          {rotulo}
+        </p>
+        <p
+          className={`mt-1 text-2xl font-semibold tabular-nums ${destaque && valor > 0 ? "text-red-600" : ""}`}
+        >
+          {valor}
+        </p>
+      </Cartao>
+    </Link>
   );
 }
 
 export function Hoje() {
+  const painel = useObterPainel();
   const empresas = useListarEmpresas();
-  const projetos = useListarProjetos();
+  const projetos = useListarProjetos({
+    status: ["em_andamento", "bloqueado"],
+    ordem: "prazoPrevisto",
+  });
 
-  if (empresas.isPending || projetos.isPending) return <Carregando />;
-  if (empresas.isError) return <Falha erro={empresas.error} />;
-  if (projetos.isError) return <Falha erro={projetos.error} />;
+  if (painel.isPending || empresas.isPending || projetos.isPending) return <Carregando />;
+  const erro = painel.error ?? empresas.error ?? projetos.error;
+  if (erro) return <Falha erro={erro} />;
+  if (!painel.data || !empresas.data || !projetos.data) return null;
 
-  const r = resumoDoGrupo(projetos.data.itens);
-  const emAndamento = projetos.data.itens.filter(
-    (p) => p.status === "em_andamento" || p.status === "bloqueado",
-  );
+  const n = painel.data;
+  const links = filtrosDoPainel(n.janelaPrazoDias, n.janelaConcluidosDias);
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Hoje na Facilitcorp</h1>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Indicador rotulo="Empresas" valor={empresas.data.total} />
-        <Indicador rotulo="Projetos ativos" valor={r.ativos} />
-        <Indicador rotulo="Projetos bloqueados" valor={r.bloqueados} destaque />
-        <Indicador rotulo="Próximos do prazo" valor={r.proximosDoPrazo} />
-        <Indicador rotulo="Concluídos (30 dias)" valor={r.concluidosRecentes} />
+        <Indicador rotulo="Empresas" valor={n.totalEmpresas} para="/empresas" />
+        <Indicador rotulo="Projetos ativos" valor={n.projetosAtivos} para={links.ativos} />
+        <Indicador
+          rotulo="Projetos bloqueados"
+          valor={n.projetosBloqueados}
+          para={links.bloqueados}
+          destaque
+        />
+        <Indicador
+          rotulo={`Prazo em até ${n.janelaPrazoDias} dias`}
+          valor={n.projetosProximosDoPrazo}
+          para={links.proximosDoPrazo}
+        />
+        <Indicador
+          rotulo={`Concluídos (${n.janelaConcluidosDias} dias)`}
+          valor={n.projetosConcluidosRecentemente}
+          para={links.concluidosRecentes}
+        />
       </div>
 
       <section>
@@ -66,7 +88,7 @@ export function Hoje() {
       </section>
 
       <Secao titulo="Projetos em andamento">
-        <TabelaProjetos projetos={emAndamento} vazio="Nenhum projeto em andamento." />
+        <TabelaProjetos projetos={projetos.data.itens} vazio="Nenhum projeto em andamento." />
       </Secao>
     </div>
   );
