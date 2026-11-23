@@ -14,16 +14,13 @@ Sem mocks, o Vite repassa `/api` para `API_URL` (padrão `http://localhost:3000`
 ### Contra o back real (sem banco nem nuvem)
 
 ```bash
-# terminal 1 — API com Postgres em memória; mostra o login de teste no console
+# terminal 1 — API completa com Postgres em memória; mostra o login de teste no console
 HUB_ORIGEM=http://localhost:5173 pnpm --filter @facilit-hub/server dev:memoria
-# terminal 2 — front; VITE_MOCK=parcial mantém no mock só o que o back ainda não entrega
-API_URL=http://127.0.0.1:8080 VITE_MOCK=parcial pnpm --filter @facilit-hub/web dev
+# terminal 2 — front sem mocks, com /api apontando para a API
+API_URL=http://127.0.0.1:8080 pnpm --filter @facilit-hub/web dev
 ```
 
-A lista do que ainda fica no mock está em `src/mocks/browser.ts` (`PENDENTES_NO_BACK`); tire a rota
-de lá quando o back passar a entregá-la.
-
-Scripts: `lint`, `typecheck`, `test`, `build`.
+`HUB_ORIGEM` precisa ser a origem do Vite: o back confere o `Origin` nas mutações.
 
 ## Contrato
 
