@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Facilit Hub API
-  version: 0.7.0
+  version: 0.7.1
   description: |
     Contrato oficial entre front-end e back-end do Facilit Hub.
 
@@ -192,14 +192,32 @@ paths:
         in: path
         required: true
         schema: { type: string, enum: [logo, capa] }
+    get:
+      tags: [empresas]
+      operationId: obterImagemEmpresa
+      summary: Conteúdo do logo ou da capa (use a URL de `logoUrl`/`capaUrl`)
+      parameters:
+        - name: v
+          in: query
+          description: Versão da imagem; só serve para invalidar o cache do navegador
+          schema: { type: integer }
+      responses:
+        '200':
+          description: "Imagem (`Cache-Control: private`)"
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
     put:
       tags: [empresas]
       operationId: enviarImagemEmpresa
       summary: Envia (ou troca) o logo ou a capa da empresa
       description: |
-        PNG, JPEG ou WebP (SVG não: pode carregar script). Logo até 2 MB,
-        capa até 5 MB. Arquivo privado; a leitura é por URL assinada
-        (`logoUrl`/`capaUrl`), que expira — não guardar em cache longo.
+        PNG, JPEG ou WebP (SVG não: pode carregar script); o tipo é conferido
+        pelo conteúdo. Logo até 2 MB, capa até 5 MB. Arquivo privado: a
+        leitura é por `logoUrl`/`capaUrl`, na própria API, com a sessão (D-013).
       requestBody:
         required: true
         content:
@@ -791,12 +809,12 @@ components:
         status: { $ref: '#/components/schemas/StatusEmpresa' }
         logoUrl:
           type: [string, 'null']
-          format: uri
-          description: URL assinada e temporária
+          format: uri-reference
+          description: "Caminho na própria API (`/api/empresas/{id}/logo?v=N`), lido com a sessão (D-013). Muda quando a imagem muda."
         capaUrl:
           type: [string, 'null']
-          format: uri
-          description: URL assinada e temporária
+          format: uri-reference
+          description: "Caminho na própria API (`/api/empresas/{id}/capa?v=N`), lido com a sessão (D-013)"
         cnpj:
           oneOf:
             - $ref: '#/components/schemas/Cnpj'
@@ -1065,7 +1083,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         nome: { type: string }
-        logoUrl: { type: [string, 'null'], format: uri, description: URL assinada e temporária }
+        logoUrl: { type: [string, 'null'], format: uri-reference, description: "Caminho na própria API, lido com a sessão (D-013)" }
 
     StatusProjeto:
       type: string
