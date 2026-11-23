@@ -71,12 +71,13 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** Conteúdo do logo ou da capa (use a URL de `logoUrl`/`capaUrl`) */
+        get: operations["obterImagemEmpresa"];
         /**
          * Envia (ou troca) o logo ou a capa da empresa
-         * @description PNG, JPEG ou WebP (SVG não: pode carregar script). Logo até 2 MB,
-         *     capa até 5 MB. Arquivo privado; a leitura é por URL assinada
-         *     (`logoUrl`/`capaUrl`), que expira — não guardar em cache longo.
+         * @description PNG, JPEG ou WebP (SVG não: pode carregar script); o tipo é conferido
+         *     pelo conteúdo. Logo até 2 MB, capa até 5 MB. Arquivo privado: a
+         *     leitura é por `logoUrl`/`capaUrl`, na própria API, com a sessão (D-013).
          */
         put: operations["enviarImagemEmpresa"];
         post?: never;
@@ -349,13 +350,13 @@ export interface components {
             segmento: string | null;
             status: components["schemas"]["StatusEmpresa"];
             /**
-             * Format: uri
-             * @description URL assinada e temporária
+             * Format: uri-reference
+             * @description Caminho na própria API (`/api/empresas/{id}/logo?v=N`), lido com a sessão (D-013). Muda quando a imagem muda.
              */
             logoUrl: string | null;
             /**
-             * Format: uri
-             * @description URL assinada e temporária
+             * Format: uri-reference
+             * @description Caminho na própria API (`/api/empresas/{id}/capa?v=N`), lido com a sessão (D-013)
              */
             capaUrl: string | null;
             cnpj: components["schemas"]["Cnpj"] | null;
@@ -529,8 +530,8 @@ export interface components {
             id: string;
             nome: string;
             /**
-             * Format: uri
-             * @description URL assinada e temporária
+             * Format: uri-reference
+             * @description Caminho na própria API, lido com a sessão (D-013)
              */
             logoUrl: string | null;
         };
@@ -981,6 +982,36 @@ export interface operations {
             403: components["responses"]["SemPermissao"];
             404: components["responses"]["NaoEncontrado"];
             409: components["responses"]["Conflito"];
+        };
+    };
+    obterImagemEmpresa: {
+        parameters: {
+            query?: {
+                /** @description Versão da imagem; só serve para invalidar o cache do navegador */
+                v?: number;
+            };
+            header?: never;
+            path: {
+                empresaId: components["parameters"]["EmpresaId"];
+                imagem: "logo" | "capa";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Imagem (`Cache-Control: private`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            401: components["responses"]["NaoAutenticado"];
+            404: components["responses"]["NaoEncontrado"];
         };
     };
     enviarImagemEmpresa: {
