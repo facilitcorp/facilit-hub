@@ -45,9 +45,12 @@ export function iniciais(nome: string) {
     .join("");
 }
 
-/** Só deixa passar http(s); evita javascript: e afins vindos de dado salvo. */
+/**
+ * Só deixa passar http(s) ou caminho da própria API (logo/capa vêm como `/api/...`, D-013);
+ * barra javascript:, data: e `//host` vindos de dado salvo.
+ */
 export function urlSegura(u?: string | null) {
-  return u && /^(https?:\/\/|blob:)/i.test(u) ? u : undefined;
+  return u && /^(https?:\/\/|blob:|\/api\/)/i.test(u) ? u : undefined;
 }
 
 /** +5511999990000 → +55 11 99999-0000 (outros países ficam como vieram). */

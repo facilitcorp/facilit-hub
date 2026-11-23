@@ -51,6 +51,9 @@ describe("formato", () => {
   it("urlSegura bloqueia javascript:", () => {
     expect(urlSegura("javascript:alert(1)")).toBeUndefined();
     expect(urlSegura("https://ok.example")).toBe("https://ok.example");
+    expect(urlSegura("/api/empresas/e1/logo?v=2")).toBe("/api/empresas/e1/logo?v=2");
+    expect(urlSegura("//malicioso.example/x")).toBeUndefined();
+    expect(urlSegura("data:text/html,x")).toBeUndefined();
   });
   it("URL com usuário/senha embutidos é recusada (mesma regra do back)", () => {
     expect(urlObrig.safeParse("https://user:senha@painel.example").success).toBe(false);
