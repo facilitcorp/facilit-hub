@@ -6,7 +6,10 @@ import type { Db } from './db.js';
 import { Problema } from './problema.js';
 import { rotasAtores } from './rotas/atores.js';
 import { rotasEmpresas } from './rotas/empresas.js';
+import { rotasDocumentos } from './rotas/documentos.js';
 import { rotasEventos } from './rotas/eventos.js';
+import { rotasPainel } from './rotas/painel.js';
+import { rotasProjetos } from './rotas/projetos.js';
 import { rotasSessao } from './rotas/sessao.js';
 import { COOKIE_SESSAO, lerSessao } from './sessao.js';
 
@@ -51,5 +54,8 @@ export function criarApp(db: Db, config: Config) {
   rotasEventos(app, db);
   rotasAtores(app, db);
   rotasEmpresas(app, db);
+  rotasProjetos(app, db);
+  rotasDocumentos(app, db);
+  rotasPainel(app, db);
   return app;
 }

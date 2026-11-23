@@ -5,7 +5,9 @@ const scrypt = (senha: string, sal: Buffer, tam: number, opcoes: ScryptOptions) 
     scryptCb(senha, sal, tam, opcoes, (e, chave) => (e ? erro(e) : ok(chave))),
   );
 
-const OPCOES = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+// Custo baixo só dentro do Vitest (HUB_SCRYPT_N no vitest.config); fora dele vale sempre 2^15.
+const N = process.env.VITEST && process.env.HUB_SCRYPT_N ? Number(process.env.HUB_SCRYPT_N) : 2 ** 15;
+const OPCOES = { N, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 /** Formato: scrypt$N$r$p$sal$hash (base64url). Os parâmetros vão junto para poder subir o custo depois. */
 export async function gerarHash(senha: string): Promise<string> {
