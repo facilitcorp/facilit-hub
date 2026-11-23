@@ -1,14 +1,15 @@
 import type { FastifyInstance } from 'fastify';
-import type { Db } from '../db.js';
+import { escopo, type Db } from '../db.js';
 import { exigir } from '../sessao.js';
 
 // Janelas da Home (D-012). Voltam na resposta para o front montar rótulo e filtro iguais.
 const JANELA_PRAZO_DIAS = 7;
 const JANELA_CONCLUIDOS_DIAS = 30;
 
-export function rotasPainel(app: FastifyInstance, db: Db) {
+export function rotasPainel(app: FastifyInstance, base: Db) {
   app.get('/api/painel', async (req) => {
     const s = exigir(req, 'projetos.ler');
+    const db = escopo(base, s.organizacaoId);
     const { rows } = await db.query<Record<string, number>>(
       `SELECT
          (SELECT count(*)::int FROM empresas WHERE organizacao_id = $1 AND status <> 'inativa') AS "totalEmpresas",

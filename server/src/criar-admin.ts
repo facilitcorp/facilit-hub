@@ -14,6 +14,7 @@ export async function criarUsuario(
   return db.transacao(async (tx) => {
     let org = (await tx.query<{ id: string }>('SELECT id FROM organizacoes WHERE nome = $1', [d.organizacao])).rows[0];
     org ??= (await tx.query<{ id: string }>('INSERT INTO organizacoes (nome) VALUES ($1) RETURNING id', [d.organizacao])).rows[0]!;
+    await tx.query("SELECT set_config('app.organizacao_id', $1, true)", [org.id]);
     const ator = (await tx.query<{ id: string }>(
       `INSERT INTO atores (organizacao_id, tipo, nome) VALUES ($1, 'pessoa', $2) RETURNING id`, [org.id, d.nome],
     )).rows[0]!;

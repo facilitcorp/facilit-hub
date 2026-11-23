@@ -2,12 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { criarApp } from '../src/app.js';
 import { criarUsuario } from '../src/criar-admin.js';
 import { migrar } from '../src/migrar.js';
-import { dbPglite } from './pglite.js';
+import { comoUsuarioDoApp, dbPglite } from './pglite.js';
 
 // Back completo com Postgres em memória, para o front integrar sem banco nem nuvem.
 // Tudo some quando o processo para. Uso: pnpm --filter @facilit-hub/server dev:memoria
 const db = dbPglite();
 await migrar(db);
+await comoUsuarioDoApp(db);
 const senha = randomBytes(9).toString('base64url');
 const email = 'gestor@exemplo.com';
 await criarUsuario(db, { organizacao: 'Grupo Exemplo', nome: 'Gestor Exemplo', email, senha, papel: 'gestor' });

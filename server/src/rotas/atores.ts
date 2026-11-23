@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Db } from '../db.js';
+import { escopo, type Db } from '../db.js';
 import { codificarCursor, decodificarCursor, Limite } from '../paginacao.js';
 import { exigir } from '../sessao.js';
 
@@ -13,9 +13,10 @@ const Filtros = z.object({
   ordem: z.enum(['nome', '-nome']).default('nome'),
 });
 
-export function rotasAtores(app: FastifyInstance, db: Db) {
+export function rotasAtores(app: FastifyInstance, base: Db) {
   app.get('/api/atores', async (req) => {
     const s = exigir(req, 'atores.ler');
+    const db = escopo(base, s.organizacaoId);
     const f = Filtros.parse(req.query);
     const offset = decodificarCursor(f.cursor, z.object({ o: z.number().int().min(0) }))?.o ?? 0;
     const params: unknown[] = [s.organizacaoId, f.ativo === 'true'];

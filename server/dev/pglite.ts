@@ -18,3 +18,15 @@ export function dbPglite(): Db {
     })),
   };
 }
+
+/**
+ * O PGlite conecta como superusuário, que ignora o RLS. Depois das migrations,
+ * passa a rodar como um papel comum, igual ao usuário do app em produção.
+ */
+export async function comoUsuarioDoApp(db: Db) {
+  await db.query(`
+    CREATE ROLE hub_app NOSUPERUSER NOBYPASSRLS;
+    GRANT USAGE ON SCHEMA public TO hub_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO hub_app;
+    SET ROLE hub_app;`);
+}

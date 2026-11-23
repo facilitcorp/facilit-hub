@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Db } from '../db.js';
+import { escopo, type Db } from '../db.js';
 import { registrarEvento } from '../eventos.js';
 import { codificarCursor, decodificarCursor, Limite } from '../paginacao.js';
 import { Problema } from '../problema.js';
@@ -57,9 +57,10 @@ const Filtros = z.object({
 const ORDEM = { nome: 'sem_acento(d.nome) ASC', '-nome': 'sem_acento(d.nome) DESC', criadoEm: 'd.criado_em ASC', '-criadoEm': 'd.criado_em DESC' };
 const Params = z.object({ documentoId: z.uuid() });
 
-export function rotasDocumentos(app: FastifyInstance, db: Db) {
+export function rotasDocumentos(app: FastifyInstance, base: Db) {
   app.get('/api/documentos', async (req) => {
     const s = exigir(req, 'documentos.ler');
+    const db = escopo(base, s.organizacaoId);
     const f = Filtros.parse(req.query);
     const offset = decodificarCursor(f.cursor, z.object({ o: z.number().int().min(0) }))?.o ?? 0;
     const params: unknown[] = [s.organizacaoId];
@@ -80,6 +81,7 @@ export function rotasDocumentos(app: FastifyInstance, db: Db) {
 
   app.post('/api/documentos', async (req, reply) => {
     const s = exigir(req, 'documentos.editar');
+    const db = escopo(base, s.organizacaoId);
     const d = DocumentoEntrada.parse(req.body);
     const projeto = await obterProjeto(db, s.organizacaoId, d.projetoId).catch(() => {
       throw new Problema(400, 'validacao', 'Projeto não encontrado', [{ campo: 'projetoId', codigo: 'nao_encontrado', mensagem: 'Projeto não encontrado' }]);
@@ -103,6 +105,7 @@ export function rotasDocumentos(app: FastifyInstance, db: Db) {
 
   app.patch('/api/documentos/:documentoId', async (req) => {
     const s = exigir(req, 'documentos.editar');
+    const db = escopo(base, s.organizacaoId);
     const { documentoId } = Params.parse(req.params);
     const { versao, ...d } = DocumentoAtualizacao.parse(req.body);
     const atual = await obter(db, s.organizacaoId, documentoId);
@@ -125,6 +128,7 @@ export function rotasDocumentos(app: FastifyInstance, db: Db) {
 
   app.delete('/api/documentos/:documentoId', async (req, reply) => {
     const s = exigir(req, 'documentos.editar');
+    const db = escopo(base, s.organizacaoId);
     const { documentoId } = Params.parse(req.params);
     await db.query('DELETE FROM documentos WHERE id = $1 AND organizacao_id = $2', [documentoId, s.organizacaoId]);
     return reply.code(204).send();

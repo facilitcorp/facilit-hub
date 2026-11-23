@@ -1,4 +1,4 @@
-import { dbPglite } from '../dev/pglite.js';
+import { comoUsuarioDoApp, dbPglite } from '../dev/pglite.js';
 import { criarApp } from '../src/app.js';
 import type { Db } from '../src/db.js';
 import { migrar } from '../src/migrar.js';
@@ -9,6 +9,7 @@ export const ORIGEM = 'https://hub.teste';
 export async function dbDeTeste(): Promise<Db> {
   const db = dbPglite();
   await migrar(db);
+  await comoUsuarioDoApp(db);
   return db;
 }
 

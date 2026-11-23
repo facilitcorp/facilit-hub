@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
-import type { Db } from './db.js';
+import { escopo, type Db } from './db.js';
 import { naoAutenticado, semPermissao } from './problema.js';
 
 export const COOKIE_SESSAO = '__Host-hub_sessao';
@@ -55,17 +55,22 @@ export async function encerrarSessao(db: Db, token: string | undefined) {
 
 export async function lerSessao(db: Db, token: string | undefined): Promise<SessaoAtiva | null> {
   if (!token) return null;
-  const { rows } = await db.query<SessaoAtiva>(
+  // Sessão, usuário e organização ficam fora do RLS; o nome vem do ator, já dentro da organização.
+  const { rows } = await db.query<Omit<SessaoAtiva, 'nome'>>(
     `SELECT u.id AS "usuarioId", u.ator_id AS "atorId", u.organizacao_id AS "organizacaoId",
-            o.nome AS "organizacaoNome", a.nome, u.email, u.papel, s.expira_em AS "expiraEm"
+            o.nome AS "organizacaoNome", u.email, u.papel, s.expira_em AS "expiraEm"
        FROM sessoes s
        JOIN usuarios u ON u.id = s.usuario_id AND u.ativo
-       JOIN atores a ON a.id = u.ator_id
        JOIN organizacoes o ON o.id = u.organizacao_id
       WHERE s.token_hash = $1 AND s.expira_em > now()`,
     [hashToken(token)],
   );
-  return rows[0] ?? null;
+  const base = rows[0];
+  if (!base) return null;
+  const ator = (await escopo(db, base.organizacaoId).query<{ nome: string; ativo: boolean }>(
+    'SELECT nome, ativo FROM atores WHERE id = $1', [base.atorId],
+  )).rows[0];
+  return ator ? { ...base, nome: ator.nome } : null;
 }
 
 /** Usar no começo de toda rota protegida: 401 sem sessão, 403 sem a permissão. */

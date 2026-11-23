@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { escopo } from '../src/db.js';
 import { cnpjValido } from '../src/validacao.js';
 import { appDeTeste, entrarComo, ORIGEM } from './apoio.js';
 
@@ -104,7 +105,7 @@ describe('empresas', () => {
 
   it('responsável inativo é recusado', async () => {
     const { db, gestor, enviar } = await preparar();
-    await db.query('UPDATE atores SET ativo = false WHERE id = $1', [gestor.atorId]);
+    await escopo(db, gestor.organizacaoId).query('UPDATE atores SET ativo = false WHERE id = $1', [gestor.atorId]);
     const r = await enviar('POST', '/api/empresas', { nome: 'Empresa Exemplo', responsaveis: [{ atorId: gestor.atorId }] });
     expect(r.statusCode).toBe(400);
     expect(r.json().codigo).toBe('ator_inativo');
