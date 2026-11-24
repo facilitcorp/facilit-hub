@@ -4,10 +4,12 @@ import type { Conta, UsuarioAtualizacao, UsuarioEntrada } from "./tipos";
 
 export const chaveUsuarios = ["usuarios"] as const;
 
-export function useListarUsuarios() {
+/** `ativo` falso não chama a API: sem `usuarios.gerir` o back responderia 403. */
+export function useListarUsuarios(ativo = true) {
   return useQuery({
     queryKey: chaveUsuarios,
     queryFn: () => dados(api.GET("/usuarios")),
+    enabled: ativo,
   });
 }
 

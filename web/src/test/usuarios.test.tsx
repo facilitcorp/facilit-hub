@@ -126,9 +126,16 @@ describe("tela de usuários", () => {
     expect(within(ana).getByText("Aguardando troca de senha")).toBeInTheDocument();
   });
 
-  it("sem a permissão, a rota não mostra as contas", async () => {
+  it("sem a permissão, a rota não mostra as contas nem pede a lista à API", async () => {
+    const pedidos: string[] = [];
+    servidor.events.on("request:start", ({ request }) => {
+      pedidos.push(`${request.method} ${new URL(request.url).pathname}`);
+    });
     renderizar("/usuarios");
     expect(await screen.findByText(/Só administradores/)).toBeInTheDocument();
+    await waitFor(() => expect(pedidos.some((p) => p.endsWith("/sessao"))).toBe(true));
+    expect(pedidos.filter((p) => /^GET .*\/usuarios$/.test(p))).toEqual([]);
+    servidor.events.removeAllListeners();
   });
 });
 
