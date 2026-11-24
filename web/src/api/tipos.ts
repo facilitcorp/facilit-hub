@@ -10,6 +10,11 @@ export type AtorResumo = S["AtorResumo"];
 export type Ator = S["Ator"];
 export type Problema = S["Problema"];
 
+export type Conta = S["Conta"];
+export type Papel = S["Papel"];
+export type UsuarioEntrada = S["UsuarioEntrada"];
+export type UsuarioAtualizacao = S["UsuarioAtualizacao"];
+
 export type Empresa = S["Empresa"];
 export type EmpresaResumo = S["EmpresaResumo"];
 export type EmpresaEntrada = S["EmpresaEntrada"];

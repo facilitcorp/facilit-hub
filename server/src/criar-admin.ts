@@ -4,25 +4,39 @@ import { conectar } from './config.js';
 import type { Db } from './db.js';
 import { migrar } from './migrar.js';
 import { gerarHash } from './senha.js';
+import type { Papel } from './sessao.js';
+
+/**
+ * Ator `pessoa` + usuário, dentro de uma transação já no escopo da organização.
+ * Usado pelo comando abaixo e pela tela de usuários (`POST /usuarios`).
+ */
+export async function inserirConta(
+  tx: Db, organizacaoId: string,
+  d: { nome: string; email: string; senhaHash: string; papel: Papel; trocarSenha: boolean },
+) {
+  const ator = (await tx.query<{ id: string }>(
+    `INSERT INTO atores (organizacao_id, tipo, nome) VALUES ($1, 'pessoa', $2) RETURNING id`, [organizacaoId, d.nome],
+  )).rows[0]!;
+  const usuario = (await tx.query<{ id: string }>(
+    `INSERT INTO usuarios (organizacao_id, ator_id, email, senha_hash, papel, trocar_senha)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [organizacaoId, ator.id, d.email, d.senhaHash, d.papel, d.trocarSenha],
+  )).rows[0]!;
+  return { atorId: ator.id, usuarioId: usuario.id };
+}
 
 /** Cria a organização (se ainda não houver) e um usuário com o ator `pessoa` dele. */
 export async function criarUsuario(
   db: Db,
-  d: { organizacao: string; nome: string; email: string; senha: string; papel: 'administrador' | 'gestor' | 'membro' },
+  d: { organizacao: string; nome: string; email: string; senha: string; papel: Papel; trocarSenha?: boolean },
 ) {
-  const hash = await gerarHash(d.senha);
+  const senhaHash = await gerarHash(d.senha);
   return db.transacao(async (tx) => {
     let org = (await tx.query<{ id: string }>('SELECT id FROM organizacoes WHERE nome = $1', [d.organizacao])).rows[0];
     org ??= (await tx.query<{ id: string }>('INSERT INTO organizacoes (nome) VALUES ($1) RETURNING id', [d.organizacao])).rows[0]!;
     await tx.query("SELECT set_config('app.organizacao_id', $1, true)", [org.id]);
-    const ator = (await tx.query<{ id: string }>(
-      `INSERT INTO atores (organizacao_id, tipo, nome) VALUES ($1, 'pessoa', $2) RETURNING id`, [org.id, d.nome],
-    )).rows[0]!;
-    const usuario = (await tx.query<{ id: string }>(
-      `INSERT INTO usuarios (organizacao_id, ator_id, email, senha_hash, papel) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [org.id, ator.id, d.email, hash, d.papel],
-    )).rows[0]!;
-    return { organizacaoId: org.id, atorId: ator.id, usuarioId: usuario.id };
+    const ids = await inserirConta(tx, org.id, { ...d, senhaHash, trocarSenha: d.trocarSenha ?? false });
+    return { organizacaoId: org.id, ...ids };
   });
 }
 

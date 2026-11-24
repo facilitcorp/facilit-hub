@@ -23,6 +23,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessao/senha": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Troca a senha da própria conta
+         * @description Exige a senha atual. Zera `trocarSenha` e encerra as OUTRAS sessões
+         *     da conta; a sessão que fez a troca continua aberta.
+         */
+        put: operations["trocarSenha"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usuarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lista as contas da organização (ativas e inativas), por nome */
+        get: operations["listarUsuarios"];
+        put?: never;
+        /**
+         * Cria uma conta com senha provisória
+         * @description Cria também o ator `pessoa` da conta (D-007). A pessoa entra com a
+         *     senha provisória e é obrigada a trocá-la no primeiro acesso.
+         */
+        post: operations["criarUsuario"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usuarios/{usuarioId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                usuarioId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Altera nome, papel ou situação da conta
+         * @description Desativar encerra as sessões da conta e desativa o ator dela (continua
+         *     no histórico, mas não recebe atribuição nova). A organização nunca
+         *     fica sem administrador ativo: rebaixar ou desativar o último dá 409
+         *     `ultimo_administrador`.
+         */
+        patch: operations["atualizarUsuario"];
+        trace?: never;
+    };
+    "/usuarios/{usuarioId}/senha-provisoria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                usuarioId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Define uma nova senha provisória (recuperação de senha)
+         * @description Para quem esqueceu a senha. Encerra todas as sessões da conta e marca
+         *     `trocarSenha`. O administrador passa a senha à pessoa fora do Hub.
+         */
+        put: operations["redefinirSenha"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/empresas": {
         parameters: {
             query?: never;
@@ -292,11 +383,55 @@ export interface components {
             nome: string;
             /** Format: email */
             email: string;
-            /** @enum {string} */
-            papel: "administrador" | "gestor" | "membro";
+            papel: components["schemas"]["Papel"];
+            /** @description Senha provisória; o front leva direto à troca de senha */
+            trocarSenha: boolean;
+        };
+        /**
+         * @description administrador = tudo + contas; gestor = cria e edita empresas e
+         *     projetos; membro = lê e registra andamento.
+         * @enum {string}
+         */
+        Papel: "administrador" | "gestor" | "membro";
+        NovaSenha: string;
+        TrocaDeSenha: {
+            senhaAtual: string;
+            novaSenha: components["schemas"]["NovaSenha"];
+        };
+        SenhaProvisoria: {
+            senhaProvisoria: components["schemas"]["NovaSenha"];
+        };
+        /** @description Conta de acesso, como o administrador vê */
+        Conta: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            atorId: string;
+            nome: string;
+            /** Format: email */
+            email: string;
+            papel: components["schemas"]["Papel"];
+            ativo: boolean;
+            trocarSenha: boolean;
+            /** Format: date-time */
+            criadoEm: string;
+            /** Format: date-time */
+            senhaTrocadaEm: string | null;
+        };
+        UsuarioEntrada: {
+            nome: string;
+            /** Format: email */
+            email: string;
+            papel: components["schemas"]["Papel"];
+            senhaProvisoria: components["schemas"]["NovaSenha"];
+        };
+        UsuarioAtualizacao: {
+            nome?: string;
+            papel?: components["schemas"]["Papel"];
+            ativo?: boolean;
         };
         /** @enum {string} */
-        Permissao: "empresas.ler" | "empresas.criar" | "empresas.editar" | "projetos.ler" | "projetos.criar" | "projetos.editar" | "projetos.atualizar" | "documentos.ler" | "documentos.editar" | "atores.ler" | "eventos.ler";
+        Permissao: "empresas.ler" | "empresas.criar" | "empresas.editar" | "projetos.ler" | "projetos.criar" | "projetos.editar" | "projetos.atualizar" | "documentos.ler" | "documentos.editar" | "atores.ler" | "eventos.ler" | "usuarios.gerir";
         /** @description Raiz do isolamento de dados (hoje só a Facilitcorp) */
         Organizacao: {
             /** Format: uuid */
@@ -868,6 +1003,173 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    trocarSenha: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrocaDeSenha"];
+            };
+        };
+        responses: {
+            /** @description Senha trocada; devolve a sessão atualizada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sessao"];
+                };
+            };
+            /**
+             * @description Entrada inválida. `codigo` = `senha_atual_incorreta` quando a senha
+             *     atual não confere; `senha_igual` quando a nova é igual à atual.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problema"];
+                };
+            };
+            401: components["responses"]["NaoAutenticado"];
+            429: components["responses"]["MuitasTentativas"];
+        };
+    };
+    listarUsuarios: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Todas as contas (uso interno, sem paginação) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        itens: components["schemas"]["Conta"][];
+                    };
+                };
+            };
+            401: components["responses"]["NaoAutenticado"];
+            403: components["responses"]["SemPermissao"];
+        };
+    };
+    criarUsuario: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsuarioEntrada"];
+            };
+        };
+        responses: {
+            /** @description Conta criada */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conta"];
+                };
+            };
+            400: components["responses"]["Invalido"];
+            401: components["responses"]["NaoAutenticado"];
+            403: components["responses"]["SemPermissao"];
+            /** @description `codigo` = `email_em_uso`: já existe conta com esse e-mail */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problema"];
+                };
+            };
+        };
+    };
+    atualizarUsuario: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                usuarioId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsuarioAtualizacao"];
+            };
+        };
+        responses: {
+            /** @description Conta atualizada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conta"];
+                };
+            };
+            400: components["responses"]["Invalido"];
+            401: components["responses"]["NaoAutenticado"];
+            403: components["responses"]["SemPermissao"];
+            404: components["responses"]["NaoEncontrado"];
+            /** @description `codigo` = `ultimo_administrador` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problema"];
+                };
+            };
+        };
+    };
+    redefinirSenha: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                usuarioId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SenhaProvisoria"];
+            };
+        };
+        responses: {
+            /** @description Senha redefinida */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conta"];
+                };
+            };
+            400: components["responses"]["Invalido"];
+            401: components["responses"]["NaoAutenticado"];
+            403: components["responses"]["SemPermissao"];
+            404: components["responses"]["NaoEncontrado"];
         };
     };
     listarEmpresas: {

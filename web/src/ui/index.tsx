@@ -7,7 +7,7 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { forwardRef } from "react";
-import type { Tom } from "@/dominio/rotulos";
+import { mensagensErro, type Tom } from "@/dominio/rotulos";
 import { iniciais, urlSegura } from "@/dominio/formato";
 
 const tons: Record<Tom, string> = {
@@ -207,14 +207,18 @@ export function Falha({ erro }: { erro: unknown }) {
 
 export function MensagemErro({ erro }: { erro: unknown }) {
   if (!erro) return null;
-  const e = erro as { conflito?: boolean; campos?: { campo: string; mensagem: string }[] };
+  const e = erro as {
+    status?: number;
+    codigo?: string;
+    campos?: { campo: string; mensagem: string }[];
+  };
+  // 409 sem código é conflito de versão (respostas antigas); 429 pode vir sem corpo.
+  const codigo =
+    e.codigo ??
+    (e.status === 409 ? "versao_desatualizada" : e.status === 429 ? "muitas_tentativas" : "");
   return (
     <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-      {e.conflito
-        ? "Outra pessoa alterou este registro enquanto você editava. Recarregue para ver a versão atual."
-        : erro instanceof Error
-          ? erro.message
-          : "Não foi possível salvar."}
+      {mensagensErro[codigo] ?? (erro instanceof Error ? erro.message : "Não foi possível salvar.")}
       {!!e.campos?.length && (
         <ul className="mt-1 list-disc pl-5 text-xs">
           {e.campos.map((c) => (

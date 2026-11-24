@@ -12,9 +12,12 @@ await comoUsuarioDoApp(db);
 const senha = randomBytes(9).toString('base64url');
 const email = 'gestor@exemplo.com';
 await criarUsuario(db, { organizacao: 'Grupo Exemplo', nome: 'Gestor Exemplo', email, senha, papel: 'gestor' });
+// Administrador para testar a tela de usuários (mesma senha).
+const emailAdmin = 'admin@exemplo.com';
+await criarUsuario(db, { organizacao: 'Grupo Exemplo', nome: 'Admin Exemplo', email: emailAdmin, senha, papel: 'administrador' });
 
 const origem = process.env.HUB_ORIGEM ?? 'http://localhost:5173';
 const porta = Number(process.env.PORT ?? 8080);
 await criarApp(db, { origemPermitida: origem, sessaoHoras: 12 }).listen({ host: '127.0.0.1', port: porta });
 console.log(`API em memória em http://127.0.0.1:${porta}/api (origem aceita: ${origem})`);
-console.log(`login: ${email} / ${senha}`);
+console.log(`login: ${email} ou ${emailAdmin} / ${senha}`);

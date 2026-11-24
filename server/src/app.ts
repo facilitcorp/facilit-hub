@@ -12,9 +12,11 @@ import { rotasEventos } from './rotas/eventos.js';
 import { rotasPainel } from './rotas/painel.js';
 import { rotasProjetos } from './rotas/projetos.js';
 import { rotasSessao } from './rotas/sessao.js';
+import { rotasUsuarios } from './rotas/usuarios.js';
 import { COOKIE_SESSAO, lerSessao } from './sessao.js';
 
 const MUTACOES = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+const LIVRES_COM_SENHA_PROVISORIA = new Set(['GET /api/sessao', 'DELETE /api/sessao', 'PUT /api/sessao/senha']);
 
 // SPA no mesmo domínio (D-005). style-src com 'unsafe-inline' por causa de atributos style do React.
 const CSP = [
@@ -34,7 +36,12 @@ export function criarApp(db: Db, config: Config) {
     }
   });
   app.addHook('preHandler', async (req) => {
-    if (req.url.startsWith('/api/')) req.sessao = await lerSessao(db, req.cookies[COOKIE_SESSAO]);
+    if (!req.url.startsWith('/api/')) return;
+    req.sessao = await lerSessao(db, req.cookies[COOKIE_SESSAO]);
+    // Senha provisória: até trocar, só dá para ver a sessão, sair ou trocar a senha.
+    if (req.sessao?.trocarSenha && !LIVRES_COM_SENHA_PROVISORIA.has(`${req.method} ${req.routeOptions.url}`)) {
+      throw new Problema(403, 'troca_de_senha_obrigatoria', 'Troque a senha provisória para continuar');
+    }
   });
   app.addHook('onSend', async (_req, reply) => {
     reply.header('content-security-policy', CSP);
@@ -65,6 +72,7 @@ export function criarApp(db: Db, config: Config) {
 
   app.get('/api/saude', async () => ({ ok: true }));
   rotasSessao(app, db, config);
+  rotasUsuarios(app, db);
   rotasEventos(app, db);
   rotasAtores(app, db);
   rotasEmpresas(app, db);
@@ -79,7 +87,7 @@ export function criarApp(db: Db, config: Config) {
     app.setNotFoundHandler((req, reply) => {
       // /assets/* inexistente é 404: aba aberta antes de uma publicação pede o .js antigo e
       // precisa de erro claro, não do index.html com 200.
-      if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/assets/')) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && !req.url.startsWith('/api/') && !req.url.startsWith('/assets/')) {
         return reply.header('cache-control', 'no-cache').sendFile('index.html');
       }
       return reply.code(404).type('application/problem+json')

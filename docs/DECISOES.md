@@ -295,3 +295,25 @@ infraestrutura nova no MVP. Ajusta o "URL assinada" da D-004 e da D-011.
 
 **Descartado agora:** bucket com URL assinada — exige bucket, conta de
 serviço e permissão de assinatura (infra da plataforma) para servir um logo.
+
+## D-014 — Contas pela tela de usuários, com senha provisória
+
+Aprovada pelo Paulo em 24/11/2026 (opção "Tela simples de usuários").
+
+- Só o **administrador** (`usuarios.gerir`) lista, cria e edita contas: nome,
+  e-mail, papel e senha provisória. Criar a conta cria também o ator `pessoa`
+  dela (D-007).
+- Conta nova ou senha redefinida fica com `trocarSenha = true`: o back
+  responde 403 `troca_de_senha_obrigatoria` em tudo, menos ver a sessão, sair
+  e trocar a senha. A trava é do back; o front só leva à tela de troca.
+- **Recuperar senha** = o administrador define uma nova provisória e a passa
+  à pessoa fora do Hub. Isso encerra todas as sessões da conta.
+- Desativar a conta encerra as sessões e desativa o ator (continua no
+  histórico, sem atribuição nova). Ninguém rebaixa nem desativa a própria
+  conta, e a organização nunca fica sem administrador ativo.
+- Trocar a própria senha exige a senha atual (conta no mesmo limite de
+  tentativas do login) e encerra as outras sessões.
+
+**Descartado agora:** recuperação por e-mail (exige serviço de envio, que é
+infra da plataforma) e login Google Workspace (mais configuração; pode entrar
+depois sem mudar o modelo de ator/usuário).

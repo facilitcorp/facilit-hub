@@ -1,5 +1,5 @@
 // Dados FICTÍCIOS para desenvolvimento e testes. Nunca use nomes de clientes reais aqui.
-import type { AtorResumo, Documento, Empresa, NotaAndamento, Projeto } from "@/api/tipos";
+import type { AtorResumo, Conta, Documento, Empresa, NotaAndamento, Projeto } from "@/api/tipos";
 
 const dia = 86_400_000;
 const atras = (d: number) => new Date(Date.now() - d * dia).toISOString();
@@ -19,6 +19,26 @@ export const atores: AtorResumo[] = [
   pessoa("a3", "Carla Mendes"),
   pessoa("a4", "Diego Rocha"),
 ];
+/** Contas do exemplo: Ana é a gestora (sessão padrão dos testes), Bruno o administrador. */
+export function criarContas(): Conta[] {
+  const conta = (a: AtorResumo, email: string, papel: Conta["papel"]): Conta => ({
+    id: `u-${a.id}`,
+    atorId: a.id,
+    nome: a.nome,
+    email,
+    papel,
+    ativo: true,
+    trocarSenha: false,
+    criadoEm: atras(90),
+    senhaTrocadaEm: atras(80),
+  });
+  const [a1, a2, a3] = atores as [AtorResumo, AtorResumo, AtorResumo];
+  return [
+    conta(a1, "gestor@exemplo.com", "gestor"),
+    conta(a2, "admin@exemplo.com", "administrador"),
+    conta(a3, "carla@exemplo.com", "membro"),
+  ];
+}
 const [ana, bruno, carla, diego] = atores as [AtorResumo, AtorResumo, AtorResumo, AtorResumo];
 
 export function novaEmpresa(e: Partial<Empresa> & Pick<Empresa, "id" | "nome">): Empresa {

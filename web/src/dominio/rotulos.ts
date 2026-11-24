@@ -1,5 +1,6 @@
 import type {
   CategoriaFerramenta,
+  Papel,
   FaseProjeto,
   Prioridade,
   StatusEmpresa,
@@ -90,3 +91,21 @@ export function opcoes<K extends string>(mapa: Record<K, string | { rotulo: stri
     return { valor, rotulo: typeof v === "string" ? v : v.rotulo };
   });
 }
+
+export const papeis: Record<Papel, { rotulo: string; descricao: string }> = {
+  administrador: { rotulo: "Administrador", descricao: "Tudo, inclusive as contas de acesso" },
+  gestor: { rotulo: "Gestor", descricao: "Cria e edita empresas e projetos" },
+  membro: { rotulo: "Membro", descricao: "Lê e registra andamento" },
+};
+
+/** Mensagens para os `codigo` do problem+json que a interface explica melhor que o back. */
+export const mensagensErro: Record<string, string> = {
+  versao_desatualizada:
+    "Outra pessoa alterou este registro enquanto você editava. Recarregue para ver a versão atual.",
+  email_em_uso: "Já existe uma conta com esse e-mail.",
+  propria_conta: "Você não pode desativar nem mudar o papel da sua própria conta.",
+  ultimo_administrador: "A organização precisa de ao menos um administrador ativo.",
+  senha_atual_incorreta: "A senha atual não confere.",
+  senha_igual: "A nova senha precisa ser diferente da atual.",
+  muitas_tentativas: "Muitas tentativas. Espere alguns minutos e tente de novo.",
+};

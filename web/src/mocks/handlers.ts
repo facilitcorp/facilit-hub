@@ -3,6 +3,7 @@ import type {
   AtualizacaoEmpresa,
   AtualizacaoProjeto,
   AtorResumo,
+  Conta,
   Documento,
   DocumentoAtualizacao,
   DocumentoEntrada,
@@ -12,13 +13,19 @@ import type {
   Painel,
   Permissao,
   Projeto,
+  Papel,
   Sessao,
+  UsuarioAtualizacao,
+  UsuarioEntrada,
 } from "@/api/tipos";
-import { atores, criarBase, novaEmpresa, novoProjeto, ORG } from "./dados";
+import { atores, criarBase, criarContas, novaEmpresa, novoProjeto, ORG } from "./dados";
 
 let base = criarBase();
 let sessao: Sessao | null = null;
 let seq = 0;
+let contas = criarContas();
+/** Senha de cada conta (só no mock). Todas as do exemplo usam "demo". */
+let senhas = new Map<string, string>();
 
 const PERMISSOES: Permissao[] = [
   "empresas.ler",
@@ -34,20 +41,29 @@ const PERMISSOES: Permissao[] = [
   "eventos.ler",
 ];
 
-function abrirSessao(): Sessao {
-  const a = atores[0]!;
+function abrirSessao(c: Conta = contas[0]!): Sessao {
   return {
-    usuario: { id: "u1", atorId: a.id, nome: a.nome, email: "gestor@exemplo.com", papel: "gestor" },
+    usuario: {
+      id: c.id,
+      atorId: c.atorId,
+      nome: c.nome,
+      email: c.email,
+      papel: c.papel,
+      trocarSenha: c.trocarSenha,
+    },
     organizacao: { id: ORG, nome: "Exemplocorp" },
-    permissoes: PERMISSOES,
+    permissoes: c.papel === "administrador" ? [...PERMISSOES, "usuarios.gerir"] : PERMISSOES,
     expiraEm: new Date(Date.now() + 3_600_000).toISOString(),
   };
 }
 
-/** Reinicia o estado (usado nos testes). */
-export function reiniciarMocks(opcoes: { logado?: boolean } = {}) {
+/** Reinicia o estado (usado nos testes). `papel` escolhe com qual conta do exemplo entrar. */
+export function reiniciarMocks(opcoes: { logado?: boolean; papel?: Papel } = {}) {
   base = criarBase();
-  sessao = opcoes.logado ? abrirSessao() : null;
+  contas = criarContas();
+  senhas = new Map(contas.map((c) => [c.email, "demo"]));
+  const c = contas.find((x) => x.papel === (opcoes.papel ?? "gestor"));
+  sessao = opcoes.logado ? abrirSessao(c) : null;
 }
 
 const agora = () => new Date().toISOString();
@@ -82,16 +98,86 @@ const ator = (atorId?: string | null): AtorResumo | null =>
 const resumoEmpresa = (e: Empresa) => ({ id: e.id, nome: e.nome, logoUrl: e.logoUrl });
 const API = "*/api";
 
+const contaDaSessao = () => contas.find((c) => c.id === sessao?.usuario.id);
+const ultimoAdmin = (c: Conta) =>
+  c.papel === "administrador" &&
+  contas.filter((x) => x.ativo && x.papel === "administrador").length === 1;
+
 export const handlers = [
+  // Senha provisória: como no back, só sessão, sair e troca de senha passam.
+  http.all(`${API}/*`, ({ request }) => {
+    const { pathname } = new URL(request.url);
+    if (sessao?.usuario.trocarSenha && !/\/api\/sessao(\/senha)?$/.test(pathname))
+      return problema(403, "troca_de_senha_obrigatoria", "Troque a senha provisória");
+  }),
   http.get(`${API}/sessao`, () =>
     sessao ? HttpResponse.json(sessao) : problema(401, "sessao_expirada", "Sem sessão"),
   ),
   http.post(`${API}/sessao`, async ({ request }) => {
     const { email, senha } = (await request.json()) as { email: string; senha: string };
-    if (!email || senha !== "demo")
+    // e-mail fora das contas entra como o gestor do exemplo (testes antigos)
+    const c = contas.find((x) => x.email === email && x.ativo) ?? (email ? contas[0] : undefined);
+    if (!c || senha !== (senhas.get(c.email) ?? "demo"))
       return problema(401, "credenciais_invalidas", "E-mail ou senha inválidos");
-    sessao = abrirSessao();
+    sessao = abrirSessao(c);
     return HttpResponse.json(sessao);
+  }),
+  http.put(`${API}/sessao/senha`, async ({ request }) => {
+    const c = contaDaSessao();
+    if (!sessao || !c) return problema(401, "sessao_expirada", "Sem sessão");
+    const { senhaAtual, novaSenha } = (await request.json()) as {
+      senhaAtual: string;
+      novaSenha: string;
+    };
+    if (senhaAtual !== senhas.get(c.email))
+      return problema(400, "senha_atual_incorreta", "A senha atual não confere");
+    if (senhaAtual === novaSenha)
+      return problema(400, "senha_igual", "A nova senha precisa ser diferente da atual");
+    senhas.set(c.email, novaSenha);
+    Object.assign(c, { trocarSenha: false, senhaTrocadaEm: agora() });
+    sessao = abrirSessao(c);
+    return HttpResponse.json(sessao);
+  }),
+
+  http.get(`${API}/usuarios`, () => HttpResponse.json({ itens: contas })),
+  http.post(`${API}/usuarios`, async ({ request }) => {
+    const d = (await request.json()) as UsuarioEntrada;
+    if (contas.some((c) => c.email.toLowerCase() === d.email.toLowerCase()))
+      return problema(409, "email_em_uso", "Já existe conta com esse e-mail");
+    const c: Conta = {
+      id: id("u"),
+      atorId: id("a"),
+      nome: d.nome,
+      email: d.email,
+      papel: d.papel,
+      ativo: true,
+      trocarSenha: true,
+      criadoEm: agora(),
+      senhaTrocadaEm: null,
+    };
+    contas.push(c);
+    senhas.set(c.email, d.senhaProvisoria);
+    return HttpResponse.json(c, { status: 201 });
+  }),
+  http.patch(`${API}/usuarios/:id`, async ({ params, request }) => {
+    const c = contas.find((x) => x.id === params.id);
+    if (!c) return naoEncontrado();
+    const d = (await request.json()) as UsuarioAtualizacao;
+    const muda = d.ativo === false || (d.papel !== undefined && d.papel !== c.papel);
+    if (c.id === sessao?.usuario.id && muda)
+      return problema(400, "propria_conta", "Não pode alterar a própria conta");
+    if (muda && d.papel !== "administrador" && ultimoAdmin(c))
+      return problema(409, "ultimo_administrador", "Último administrador");
+    Object.assign(c, mesclar(c, d));
+    return HttpResponse.json(c);
+  }),
+  http.put(`${API}/usuarios/:id/senha-provisoria`, async ({ params, request }) => {
+    const c = contas.find((x) => x.id === params.id);
+    if (!c) return naoEncontrado();
+    const { senhaProvisoria } = (await request.json()) as { senhaProvisoria: string };
+    senhas.set(c.email, senhaProvisoria);
+    c.trocarSenha = true;
+    return HttpResponse.json(c);
   }),
   http.delete(`${API}/sessao`, () => {
     sessao = null;

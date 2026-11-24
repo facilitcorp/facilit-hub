@@ -3,6 +3,7 @@ import type { Projeto } from "@/api/tipos";
 import { diasAte, haQuanto, notaVelha, urlSegura } from "./formato";
 import { filtrosDoPainel, prazoProximo } from "./painel";
 import { telefoneOpc, urlObrig } from "./formulario";
+import { gerarSenha } from "./senha";
 
 const agora = new Date("2026-11-23T12:00:00Z").getTime();
 const base = {
@@ -63,5 +64,14 @@ describe("formato", () => {
     expect(telefoneOpc.parse("+55 (11) 99999-0000")).toBe("+5511999990000");
     expect(telefoneOpc.parse("")).toBeNull();
     expect(telefoneOpc.safeParse("11 9999").success).toBe(false);
+  });
+});
+
+describe("gerarSenha", () => {
+  it("gera 16 caracteres sem ambíguos e diferentes a cada chamada", () => {
+    const senhas = new Set(Array.from({ length: 50 }, () => gerarSenha()));
+    expect(senhas.size).toBe(50);
+    for (const s of senhas) expect(s).toMatch(/^[A-HJ-NP-Za-km-np-z2-9]{16}$/);
+    expect(gerarSenha(20)).toHaveLength(20);
   });
 });
