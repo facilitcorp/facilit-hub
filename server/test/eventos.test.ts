@@ -11,6 +11,9 @@ describe('eventos', () => {
     const alvo = { tipo: 'projeto' as const, id: '00000000-0000-4000-8000-000000000001', titulo: 'Projeto Exemplo' };
     for (let i = 1; i <= 3; i++) {
       await registrarEvento(escopo(db, ana.organizacaoId), { organizacaoId: ana.organizacaoId, tipo: 'project.updated', autorAtorId: ana.atorId, alvo, dados: { n: i } });
+      // O relógio do PGlite tem resolução de milissegundo: sem a pausa, dois eventos empatam no instante
+      // e o desempate pelo id (uuid aleatório) deixa a ordem esperada pelo teste ao acaso.
+      await new Promise((r) => setTimeout(r, 2));
     }
     await registrarEvento(escopo(db, outra.organizacaoId), { organizacaoId: outra.organizacaoId, tipo: 'project.created', autorAtorId: null, alvo });
 

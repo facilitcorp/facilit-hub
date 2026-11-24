@@ -279,7 +279,7 @@ type Dialogo =
 export function Usuarios() {
   const pode = usePode("usuarios.gerir");
   const eu = useObterSessao().data?.usuario.id;
-  const lista = useListarUsuarios();
+  const lista = useListarUsuarios(pode);
   const situacao = useAtualizarUsuario();
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
   const fechar = () => setDialogo(null);
