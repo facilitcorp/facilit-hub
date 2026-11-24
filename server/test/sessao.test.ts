@@ -73,7 +73,7 @@ describe('sessão', () => {
 });
 
 describe('front servido pela API', () => {
-  it('serve o index.html nas rotas do React, 404 problem+json em /api e cabeçalhos de segurança', async () => {
+  it('serve o index.html nas rotas do React, 404 em /api e /assets inexistentes e cabeçalhos de segurança', async () => {
     const { mkdtemp, writeFile } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
@@ -89,5 +89,7 @@ describe('front servido pela API', () => {
     const api = await app.inject({ url: '/api/nao-existe' });
     expect(api.statusCode).toBe(404);
     expect(api.headers['content-type']).toContain('application/problem+json');
+    const antigo = await app.inject({ url: '/assets/index-antigo.js' });
+    expect(antigo.statusCode).toBe(404);
   });
 });
