@@ -40,18 +40,20 @@ export async function criarUsuario(
   });
 }
 
-// Uso: pnpm --filter @facilit-hub/server criar-admin. Pergunta tudo no terminal: senha nunca em argumento nem em arquivo.
+// Uso: pnpm --filter @facilit-hub/server criar-admin (na imagem: node server/dist/criar-admin.js).
+// Pergunta tudo no terminal: senha nunca em argumento nem em arquivo. A senha é provisória:
+// quem opera o comando não é o dono da conta, então a troca no primeiro acesso é obrigatória (D-014).
 if (import.meta.url === `file://${process.argv[1]}`) {
   const rl = createInterface({ input: stdin, output: stdout });
   const organizacao = await rl.question('Organização: ');
   const nome = await rl.question('Nome: ');
   const email = await rl.question('E-mail: ');
-  const senha = await rl.question('Senha (mín. 12): ');
+  const senha = await rl.question('Senha provisória (mín. 12): ');
   rl.close();
   if (senha.length < 12) throw new Error('senha curta');
   const { db, fechar } = conectar();
   await migrar(db);
-  await criarUsuario(db, { organizacao, nome, email, senha, papel: 'administrador' });
+  await criarUsuario(db, { organizacao, nome, email, senha, papel: 'administrador', trocarSenha: true });
   console.log('usuário criado');
   await fechar();
 }
