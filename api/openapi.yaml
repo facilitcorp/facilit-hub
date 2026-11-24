@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Facilit Hub API
-  version: 0.7.1
+  version: 0.8.0
   description: |
     Contrato oficial entre front-end e back-end do Facilit Hub.
 
@@ -30,6 +30,12 @@ info:
       para fase posterior e NÃO estão neste contrato.
     - Nenhum campo de senha ou credencial de terceiros existe neste contrato
       (D-012): o Hub registra o que se usa e onde acessar, nunca como entrar.
+      As únicas senhas são as do próprio login no Hub (`Credenciais`,
+      `TrocaDeSenha`, `UsuarioEntrada`), sempre `writeOnly` e nunca devolvidas.
+    - Senha provisória (v0.8.0): conta criada ou senha redefinida pelo
+      administrador volta com `usuario.trocarSenha = true`. Enquanto for
+      true, toda rota responde **403** `codigo` = `troca_de_senha_obrigatoria`,
+      menos `obterSessao`, `sair` e `trocarSenha`.
 servers:
   - url: /api
 security:
@@ -38,6 +44,8 @@ security:
 tags:
   - name: sessao
     description: Login, logout e sessão atual
+  - name: usuarios
+    description: Contas de acesso ao Hub (só administrador)
   - name: empresas
     description: Empresas da organização (Telensat, Rastremix, Mobiliza...)
   - name: atores
@@ -93,6 +101,146 @@ paths:
       summary: Encerra a sessão (logout). Idempotente.
       responses:
         '204': { description: Sessão encerrada }
+
+  /sessao/senha:
+    put:
+      tags: [sessao]
+      operationId: trocarSenha
+      summary: Troca a senha da própria conta
+      description: |
+        Exige a senha atual. Zera `trocarSenha` e encerra as OUTRAS sessões
+        da conta; a sessão que fez a troca continua aberta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrocaDeSenha' }
+      responses:
+        '200':
+          description: Senha trocada; devolve a sessão atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sessao' }
+        '400':
+          description: |
+            Entrada inválida. `codigo` = `senha_atual_incorreta` quando a senha
+            atual não confere; `senha_igual` quando a nova é igual à atual.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problema' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '429': { $ref: '#/components/responses/MuitasTentativas' }
+
+  /usuarios:
+    get:
+      tags: [usuarios]
+      operationId: listarUsuarios
+      summary: Lista as contas da organização (ativas e inativas), por nome
+      responses:
+        '200':
+          description: Todas as contas (uso interno, sem paginação)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [itens]
+                properties:
+                  itens:
+                    type: array
+                    items: { $ref: '#/components/schemas/Conta' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+    post:
+      tags: [usuarios]
+      operationId: criarUsuario
+      summary: Cria uma conta com senha provisória
+      description: |
+        Cria também o ator `pessoa` da conta (D-007). A pessoa entra com a
+        senha provisória e é obrigada a trocá-la no primeiro acesso.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UsuarioEntrada' }
+      responses:
+        '201':
+          description: Conta criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conta' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '409':
+          description: '`codigo` = `email_em_uso`: já existe conta com esse e-mail'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problema' }
+
+  /usuarios/{usuarioId}:
+    parameters:
+      - name: usuarioId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [usuarios]
+      operationId: atualizarUsuario
+      summary: Altera nome, papel ou situação da conta
+      description: |
+        Desativar encerra as sessões da conta e desativa o ator dela (continua
+        no histórico, mas não recebe atribuição nova). A organização nunca
+        fica sem administrador ativo: rebaixar ou desativar o último dá 409
+        `ultimo_administrador`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UsuarioAtualizacao' }
+      responses:
+        '200':
+          description: Conta atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conta' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409':
+          description: '`codigo` = `ultimo_administrador`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problema' }
+
+  /usuarios/{usuarioId}/senha-provisoria:
+    parameters:
+      - name: usuarioId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [usuarios]
+      operationId: redefinirSenha
+      summary: Define uma nova senha provisória (recuperação de senha)
+      description: |
+        Para quem esqueceu a senha. Encerra todas as sessões da conta e marca
+        `trocarSenha`. O administrador passa a senha à pessoa fora do Hub.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SenhaProvisoria' }
+      responses:
+        '200':
+          description: Senha redefinida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conta' }
+        '400': { $ref: '#/components/responses/Invalido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
 
   /empresas:
     get:
@@ -715,7 +863,7 @@ components:
 
     Usuario:
       type: object
-      required: [id, atorId, nome, email, papel]
+      required: [id, atorId, nome, email, papel, trocarSenha]
       properties:
         id: { type: string, format: uuid }
         atorId:
@@ -724,7 +872,68 @@ components:
           description: Ator (tipo `pessoa`) desta pessoa; é o id usado em atribuições
         nome: { type: string }
         email: { type: string, format: email }
-        papel: { type: string, enum: [administrador, gestor, membro] }
+        papel: { $ref: '#/components/schemas/Papel' }
+        trocarSenha:
+          type: boolean
+          description: Senha provisória; o front leva direto à troca de senha
+
+    Papel:
+      type: string
+      description: |
+        administrador = tudo + contas; gestor = cria e edita empresas e
+        projetos; membro = lê e registra andamento.
+      enum: [administrador, gestor, membro]
+
+    NovaSenha:
+      type: string
+      minLength: 12
+      maxLength: 200
+      writeOnly: true
+
+    TrocaDeSenha:
+      type: object
+      required: [senhaAtual, novaSenha]
+      properties:
+        senhaAtual: { type: string, minLength: 1, maxLength: 200, writeOnly: true }
+        novaSenha: { $ref: '#/components/schemas/NovaSenha' }
+
+    SenhaProvisoria:
+      type: object
+      required: [senhaProvisoria]
+      properties:
+        senhaProvisoria: { $ref: '#/components/schemas/NovaSenha' }
+
+    Conta:
+      type: object
+      description: Conta de acesso, como o administrador vê
+      required: [id, atorId, nome, email, papel, ativo, trocarSenha, criadoEm, senhaTrocadaEm]
+      properties:
+        id: { type: string, format: uuid }
+        atorId: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        papel: { $ref: '#/components/schemas/Papel' }
+        ativo: { type: boolean }
+        trocarSenha: { type: boolean }
+        criadoEm: { type: string, format: date-time }
+        senhaTrocadaEm: { type: [string, 'null'], format: date-time }
+
+    UsuarioEntrada:
+      type: object
+      required: [nome, email, papel, senhaProvisoria]
+      properties:
+        nome: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        papel: { $ref: '#/components/schemas/Papel' }
+        senhaProvisoria: { $ref: '#/components/schemas/NovaSenha' }
+
+    UsuarioAtualizacao:
+      type: object
+      minProperties: 1
+      properties:
+        nome: { type: string, minLength: 1, maxLength: 120 }
+        papel: { $ref: '#/components/schemas/Papel' }
+        ativo: { type: boolean }
 
     Permissao:
       type: string
@@ -740,6 +949,7 @@ components:
         - documentos.editar
         - atores.ler
         - eventos.ler
+        - usuarios.gerir
 
     Organizacao:
       type: object

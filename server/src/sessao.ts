@@ -15,6 +15,7 @@ export interface SessaoAtiva {
   nome: string;
   email: string;
   papel: Papel;
+  trocarSenha: boolean;
   expiraEm: Date;
 }
 
@@ -23,7 +24,7 @@ const PERMISSOES: Record<Papel, readonly string[]> = {
   administrador: [
     'empresas.ler', 'empresas.criar', 'empresas.editar',
     'projetos.ler', 'projetos.criar', 'projetos.editar', 'projetos.atualizar',
-    'documentos.ler', 'documentos.editar', 'atores.ler', 'eventos.ler',
+    'documentos.ler', 'documentos.editar', 'atores.ler', 'eventos.ler', 'usuarios.gerir',
   ],
   gestor: [
     'empresas.ler', 'empresas.criar', 'empresas.editar',
@@ -53,12 +54,20 @@ export async function encerrarSessao(db: Db, token: string | undefined) {
   if (token) await db.query('DELETE FROM sessoes WHERE token_hash = $1', [hashToken(token)]);
 }
 
+/** Encerra todas as sessões da conta, menos a do `tokenMantido` (quem acabou de trocar a senha). */
+export async function encerrarSessoesDoUsuario(db: Db, usuarioId: string, tokenMantido?: string) {
+  await db.query('DELETE FROM sessoes WHERE usuario_id = $1 AND token_hash <> $2', [
+    usuarioId, tokenMantido ? hashToken(tokenMantido) : '',
+  ]);
+}
+
 export async function lerSessao(db: Db, token: string | undefined): Promise<SessaoAtiva | null> {
   if (!token) return null;
   // Sessão, usuário e organização ficam fora do RLS; o nome vem do ator, já dentro da organização.
   const { rows } = await db.query<Omit<SessaoAtiva, 'nome'>>(
     `SELECT u.id AS "usuarioId", u.ator_id AS "atorId", u.organizacao_id AS "organizacaoId",
-            o.nome AS "organizacaoNome", u.email, u.papel, s.expira_em AS "expiraEm"
+            o.nome AS "organizacaoNome", u.email, u.papel, u.trocar_senha AS "trocarSenha",
+            s.expira_em AS "expiraEm"
        FROM sessoes s
        JOIN usuarios u ON u.id = s.usuario_id AND u.ativo
        JOIN organizacoes o ON o.id = u.organizacao_id

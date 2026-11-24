@@ -34,3 +34,6 @@ export function cnpjValido(c: string) {
 }
 
 export const Cnpj = z.string().refine(cnpjValido, 'CNPJ inválido (14 dígitos, sem pontuação)');
+
+/** Senha de login no Hub: mínimo de 12, como no `criar-admin`. */
+export const NovaSenha = z.string().min(12, 'Mínimo de 12 caracteres').max(200);

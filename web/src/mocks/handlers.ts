@@ -37,7 +37,14 @@ const PERMISSOES: Permissao[] = [
 function abrirSessao(): Sessao {
   const a = atores[0]!;
   return {
-    usuario: { id: "u1", atorId: a.id, nome: a.nome, email: "gestor@exemplo.com", papel: "gestor" },
+    usuario: {
+      id: "u1",
+      atorId: a.id,
+      nome: a.nome,
+      email: "gestor@exemplo.com",
+      papel: "gestor",
+      trocarSenha: false,
+    },
     organizacao: { id: ORG, nome: "Exemplocorp" },
     permissoes: PERMISSOES,
     expiraEm: new Date(Date.now() + 3_600_000).toISOString(),
