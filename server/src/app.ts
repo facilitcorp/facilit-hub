@@ -83,7 +83,17 @@ export function criarApp(db: Db, config: Config) {
   // Front compilado (web/dist) servido pela própria API: um serviço, um domínio.
   // Rota desconhecida fora de /api devolve o index.html (o React Router resolve).
   if (config.webDir) {
-    app.register(estatico, { root: config.webDir, wildcard: false, maxAge: '1h' });
+    // index.html nunca em cache: depois de uma publicação ele aponta para os .js novos, e um
+    // index antigo pediria /assets que não existem mais (404, tela em branco). Os /assets têm
+    // hash no nome, então podem ficar em cache para sempre.
+    app.register(estatico, {
+      root: config.webDir,
+      wildcard: false,
+      cacheControl: false,
+      setHeaders: (res, caminho) => {
+        res.setHeader('cache-control', /[\\/]assets[\\/]/.test(caminho) ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    });
     app.setNotFoundHandler((req, reply) => {
       // /assets/* inexistente é 404: aba aberta antes de uma publicação pede o .js antigo e
       // precisa de erro claro, não do index.html com 200.
