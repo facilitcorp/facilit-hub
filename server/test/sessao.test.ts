@@ -74,13 +74,15 @@ describe('sessão', () => {
 
 describe('front servido pela API', () => {
   it('serve o index.html nas rotas do React, 404 em /api e /assets inexistentes e cabeçalhos de segurança', async () => {
-    const { mkdtemp, writeFile } = await import('node:fs/promises');
+    const { mkdir, mkdtemp, writeFile } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
     const { criarApp } = await import('../src/app.js');
     const { dbDeTeste } = await import('./apoio.js');
     const pasta = await mkdtemp(join(tmpdir(), 'web-'));
     await writeFile(join(pasta, 'index.html'), '<div id="raiz"></div>');
+    await mkdir(join(pasta, 'assets'));
+    await writeFile(join(pasta, 'assets', 'index-abc123.js'), 'console.log(1)');
     const app = criarApp(await dbDeTeste(), { origemPermitida: ORIGEM, sessaoHoras: 12, webDir: pasta });
     const pagina = await app.inject({ url: '/empresas/123' });
     expect(pagina.statusCode).toBe(200);
@@ -93,5 +95,12 @@ describe('front servido pela API', () => {
     expect((await app.inject({ method: 'HEAD', url: '/usuarios' })).statusCode).toBe(200);
     const antigo = await app.inject({ url: '/assets/index-antigo.js' });
     expect(antigo.statusCode).toBe(404);
+    // index.html sem cache em qualquer caminho; asset com hash, em cache longo.
+    for (const url of ['/', '/index.html', '/empresas/123']) {
+      expect((await app.inject({ url })).headers['cache-control'], url).toBe('no-cache');
+    }
+    const asset = await app.inject({ url: '/assets/index-abc123.js' });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
   });
 });
