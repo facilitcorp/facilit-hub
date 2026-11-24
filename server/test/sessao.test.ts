@@ -89,6 +89,8 @@ describe('front servido pela API', () => {
     const api = await app.inject({ url: '/api/nao-existe' });
     expect(api.statusCode).toBe(404);
     expect(api.headers['content-type']).toContain('application/problem+json');
+    // HEAD também: health check numa rota do front não pode dar 404.
+    expect((await app.inject({ method: 'HEAD', url: '/usuarios' })).statusCode).toBe(200);
     const antigo = await app.inject({ url: '/assets/index-antigo.js' });
     expect(antigo.statusCode).toBe(404);
   });

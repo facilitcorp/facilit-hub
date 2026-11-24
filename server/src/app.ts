@@ -87,7 +87,7 @@ export function criarApp(db: Db, config: Config) {
     app.setNotFoundHandler((req, reply) => {
       // /assets/* inexistente é 404: aba aberta antes de uma publicação pede o .js antigo e
       // precisa de erro claro, não do index.html com 200.
-      if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/assets/')) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && !req.url.startsWith('/api/') && !req.url.startsWith('/assets/')) {
         return reply.header('cache-control', 'no-cache').sendFile('index.html');
       }
       return reply.code(404).type('application/problem+json')
