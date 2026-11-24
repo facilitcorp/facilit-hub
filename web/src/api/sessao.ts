@@ -47,3 +47,12 @@ export function useSair() {
     },
   });
 }
+
+export function useTrocarSenha() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { senhaAtual: string; novaSenha: string }) =>
+      dados(api.PUT("/sessao/senha", { body })),
+    onSuccess: (s) => qc.setQueryData(chaveSessao, s),
+  });
+}

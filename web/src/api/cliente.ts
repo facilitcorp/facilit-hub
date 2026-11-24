@@ -20,6 +20,10 @@ export class ErroApi extends Error {
   get conflito() {
     return this.status === 409;
   }
+  /** Código estável do problem+json (`email_em_uso`, `ultimo_administrador`...). */
+  get codigo() {
+    return this.problema?.codigo;
+  }
   get naoAutenticado() {
     return this.status === 401;
   }
